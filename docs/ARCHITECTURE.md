@@ -4,7 +4,7 @@ Domain holds entities, ownership IDs and states. Application holds contracts, ru
 
 ## Workflow and consistency
 
-WorkflowDefinition binds a profile, platform, resume version, rules and optional evaluator/writer. A conditional lease prevents overlapping runs. Discovery uses a synthetic Playwright source or imported vacancies. Up to ten applications per run pass through persisted evaluation and drafting stages. Existing reviewed/terminal applications and imported historical submissions are skipped.
+WorkflowDefinition binds a profile, platform, resume version, rules and optional evaluator/writer. A conditional lease prevents overlapping runs. Discovery uses a synthetic Playwright source, imported vacancies or read-only HeadHunter and Greenhouse APIs. Up to ten applications per run pass through persisted evaluation and drafting stages. Existing reviewed/terminal applications and imported historical submissions are skipped.
 
 Unique keys protect platform/external vacancy ID, profile/vacancy application, resume/version, attempt idempotency and source feedback identity. Application revision, workflow revision and agent version prevent stale changes. AI output is schema-validated; claimed matching skills and writer facts must come from supplied evidence. Review remains mandatory.
 
@@ -24,7 +24,7 @@ Codex CLI uses ArgumentList and stdin, output schema and process-tree timeout. M
 
 JournalService stages CSV rows, validates mapping and confirms them transactionally. Vacancy conflicts follow keep-local/update-vacancies. HistoricalApplication stores source status separately from locally executed attempts and blocks resubmission. Unconfirmed journal imports block approval/submission.
 
-RemoteIntegrationService uses fixed Google API hosts, no redirect following, 90-second timeout and bounded responses. Sheets becomes a staged import. Gmail reads metadata/snippet, JSON feedback uses source event IDs. Feedback is explicitly linked to an application of the same profile; this records EmployerInteraction and EmployerResponded. No outbound mail or calendar writes occur.
+RemoteIntegrationService uses fixed Google API hosts, no redirect following, 90-second timeout and bounded responses. Sheets becomes a staged import. A separate export path previews a bounded snapshot and compares the local and remote values before a RAW update to a dedicated tab. Google OAuth uses a loopback callback with PKCE and stores refresh tokens in the protected secret store. Gmail reads metadata/snippet, JSON feedback uses source event IDs. Feedback is explicitly linked to an application of the same profile; this records EmployerInteraction and EmployerResponded. No outbound mail or calendar writes occur.
 
 ## Local security and storage
 
