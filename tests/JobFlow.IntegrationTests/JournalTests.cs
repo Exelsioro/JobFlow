@@ -58,6 +58,57 @@ public class JournalTests
         await service.PullAsync(fixture.Integration.Id,default);await service.PullAsync(fixture.Integration.Id,default);
         var feedback=await fixture.Db.Set<FeedbackEvent>().SingleAsync();Assert.Equal("Interview",feedback.Subject);
     }
+    [Fact]
+    public async Task SheetsExportRequiresFreshPreviewAndUsesRawValues()
+    {
+        await using var fixture = await Fixture.Create();
+        var integration = fixture.Integration;
+        integration.Kind = "google-sheets";
+        integration.Endpoint = "https://sheets.googleapis.com/v4/spreadsheets/synthetic/values/Import!A1:C10";
+        integration.Enabled = true;
+        integration.ImportConfirmed = true;
+        await fixture.Db.SaveChangesAsync();
+        using var handler = new SheetsHandler();
+        using var http = new HttpClient(handler);
+        var writer = new SheetsWriteBack(fixture.Db, new SecretStore(fixture.Root), http);
+        var preview = await writer.PreviewAsync(integration.Id, "Export", default);
+        Assert.Equal(0, handler.Writes);
+        handler.Cells = """{"values":[["Unrelated data"]]}""";
+        await Assert.ThrowsAsync<InvalidOperationException>(() => writer.PreviewAsync(integration.Id, "Export", default, preview.Digest));
+        handler.Cells = System.Text.Json.JsonSerializer.Serialize(new { values = new[] { preview.Rows[0], new[] { "old-id" } } });
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => writer.PreviewAsync(integration.Id, "Export", default, preview.Digest));
+        Assert.Equal(0, handler.Writes);
+        var fresh = await writer.PreviewAsync(integration.Id, "Export", default);
+        await writer.PreviewAsync(integration.Id, "Export", default, fresh.Digest);
+        Assert.Equal(1, handler.Writes);
+        Assert.Contains(await fixture.Db.Audit.ToListAsync(), x => x.Action == "SheetsExported");
+    }
+
+    private sealed class SheetsHandler : HttpMessageHandler
+    {
+        public string Cells = "{}";
+        public int Writes;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Assert.Contains("'Export'!A1:F501", Uri.UnescapeDataString(request.RequestUri!.AbsolutePath));
+            if (request.Method == HttpMethod.Put)
+            {
+                Assert.Equal("?valueInputOption=RAW", request.RequestUri.Query);
+                using var payload = System.Text.Json.JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
+                var rows = payload.RootElement.GetProperty("values");
+                Assert.Equal(2, rows.GetArrayLength());
+                Assert.All(rows[1].EnumerateArray(), cell => Assert.Equal("", cell.GetString()));
+                Writes++;
+            }
+            else
+            {
+                Assert.Equal(HttpMethod.Get, request.Method);
+                Assert.Equal("?valueRenderOption=FORMULA", request.RequestUri.Query);
+            }
+            return new(HttpStatusCode.OK) { Content = new StringContent(Cells, Encoding.UTF8, "application/json") };
+        }
+    }
+
     private class Handler(string json):HttpMessageHandler
     {
         public bool Fail;

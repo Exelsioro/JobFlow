@@ -8,13 +8,34 @@ type Section = {key:string;title:string;description:string;columns?:string[];fie
 export class App implements OnInit {
   section=signal('dashboard'); data=signal<Record<string,Row[]>>({}); status=signal<Row>({});
   loading=signal(false); saving=signal(false); error=signal(''); message=signal(''); result=signal(''); editing=signal(false); query=signal('');
-  private selectedProfile=signal(''); get profileId(){return this.selectedProfile();} set profileId(value:string){this.selectedProfile.set(value);this.resumeId='';this.activeAgent=null;this.draftApplication=null;this.feedbackEvent=null;this.importIntegration=null;this.secretConnection=null;this.secretJson='{}';this.editing.set(false);} draft:Row={}; file:File|null=null; resumeId=''; agentInput=''; activeAgent:Row|null=null;
+  private selectedProfile=signal(''); get profileId(){return this.selectedProfile();} set profileId(value:string){this.selectedProfile.set(value);this.resumeId='';this.activeAgent=null;this.draftApplication=null;this.feedbackEvent=null;this.importIntegration=null;this.sheetIntegration=null;this.sheetPreview=null;this.secretConnection=null;this.secretJson='{}';this.editing.set(false);} draft:Row={}; file:File|null=null; resumeId=''; agentInput=''; activeAgent:Row|null=null;
   feedbackEvent:Row|null=null;feedbackApplicationId='';
   feedbackApplications(){return (this.data()['applications']??[]).filter(x=>x['candidateProfileId']===this.feedbackEvent?.['candidateProfileId']&&['Submitted','EmployerResponded'].includes(x['state']));}
   async linkFeedback(){if(!this.feedbackEvent)return;await this.command('feedback/'+this.feedbackEvent['id']+'/link',{applicationId:this.feedbackApplicationId});if(!this.error())this.feedbackEvent=null;}
   importIntegration:Row|null=null; csvText='';
   async selectCsv(event:Event){const file=(event.target as HTMLInputElement).files?.[0];if(file){if(file.size>5242880){this.error.set('Максимум 5 МБ.');return;}this.csvText=await file.text();}}
   async previewImport(){if(this.importIntegration)await this.command('integrations/'+this.importIntegration['id']+'/preview',{csv:this.csvText});}
+  sheetIntegration:Row|null=null;
+  sheetTab='JobFlow Export';
+  sheetPreview:{tab:string;digest:string;existing:string[][];rows:string[][]}|null=null;
+  openSheetExport(row:Row){this.sheetIntegration=row;this.sheetTab='JobFlow Export';this.sheetPreview=null;}
+  async previewSheet(){
+    if(!this.sheetIntegration)return;
+    this.sheetPreview=null;
+    await this.action(async()=>{this.sheetPreview=await this.api('integrations/'+this.sheetIntegration!['id']+'/sheets/preview','POST',{tab:this.sheetTab});});
+  }
+  async confirmSheet(){
+    if(!this.sheetIntegration||!this.sheetPreview||this.sheetPreview.tab!==this.sheetTab)return;
+    const {tab,digest}=this.sheetPreview;
+    this.sheetPreview=null;
+    await this.command('integrations/'+this.sheetIntegration['id']+'/sheets/confirm',{tab,digest});
+  }
+  async connectGoogle(row:Row){
+    await this.action(async()=>{
+      const {authorizationUrl}=await this.api('integrations/'+row['id']+'/google/connect','POST',{});
+      location.assign(authorizationUrl);
+    });
+  }
   secretConnection:Row|null=null; secretJson='{}';
   async saveSecrets(){if(!this.secretConnection)return;await this.action(async()=>{await this.api((this.secretConnection!['kind']?'integrations/':'mcp/')+this.secretConnection!['id']+'/secrets','POST',JSON.parse(this.secretJson));this.secretJson='{}';this.secretConnection=null;this.message.set('Секреты сохранены отдельно от конфигурации.');});}
   draftApplication:Row|null=null; draftLetter='';
@@ -42,7 +63,7 @@ export class App implements OnInit {
     {key:'accounts',title:'Аккаунты площадок',description:'Связи профиля кандидата, площадки и браузера. Внешний ID резюме задаётся вручную; его актуальность не подтверждена площадкой.',columns:['candidateProfileId','jobPlatformId','browserProfileId','externalResumeId'],fields:[{key:'candidateProfileId',label:'Профиль',type:'select',source:'profiles',required:true},{key:'jobPlatformId',label:'Площадка',type:'select',source:'platforms',required:true},{key:'browserProfileId',label:'Браузерный профиль',type:'select',source:'browser-profiles'},{key:'externalResumeId',label:'ID резюме на площадке'}]},
     {key:'platforms',title:'Площадки',description:'Добавление URL не включает автоматическую отправку.',columns:['name','url','adapter'],fields:[
       {key:'name',label:'Название',required:true},{key:'url',label:'URL',type:'url',required:true},
-      {key:'adapter',label:'Адаптер',type:'select',options:['search-only','test-form']},{key:'geography',label:'География'},{key:'searchFilters',label:'Фильтры поиска',type:'textarea'}]},
+      {key:'adapter',label:'Адаптер',type:'select',options:['search-only','test-form','headhunter','greenhouse']},{key:'geography',label:'География'},{key:'searchFilters',label:'Запрос HeadHunter или токен доски Greenhouse',type:'textarea'}]},
     {key:'vacancies',title:'Вакансии',description:'Ручной импорт и предварительная оценка для выбранного профиля.',columns:['title','employer','externalId','createdAt'],fields:[
       {key:'jobPlatformId',label:'Площадка',type:'select',source:'platforms',required:true},{key:'externalId',label:'ID на площадке',required:true},
       {key:'title',label:'Должность',required:true},{key:'employer',label:'Работодатель',required:true},{key:'url',label:'Ссылка',type:'url'},
@@ -109,7 +130,7 @@ export class App implements OnInit {
     configurationVersion:'Версия',error:'Ошибка',entityType:'Сущность',action:'Действие',entityId:'ID'};
   async ngOnInit(){const route=location.hash.slice(1);if(this.sections.some(x=>x.key===route))this.section.set(route);await this.refresh();}
   @HostListener('window:hashchange') onHashChange(){const key=location.hash.slice(1);if(key!==this.section()&&this.sections.some(x=>x.key===key))this.navigate(key);}
-  navigate(key:string){this.section.set(key);location.hash=key;this.query.set('');this.editing.set(false);this.result.set('');this.activeAgent=null;this.draftApplication=null;this.feedbackEvent=null;this.importIntegration=null;this.secretConnection=null;this.secretJson='{}';this.error.set('');this.message.set('');}
+  navigate(key:string){this.section.set(key);location.hash=key;this.query.set('');this.editing.set(false);this.result.set('');this.activeAgent=null;this.draftApplication=null;this.feedbackEvent=null;this.importIntegration=null;this.sheetIntegration=null;this.sheetPreview=null;this.secretConnection=null;this.secretJson='{}';this.error.set('');this.message.set('');}
   async api(path:string,method='GET',body?:unknown){
     const response=await fetch('/api/'+path,{method,headers:{'X-JobFlow-Client':'local-ui',...(body instanceof FormData?{}:{'Content-Type':'application/json'})},
       body:body===undefined?undefined:body instanceof FormData?body:JSON.stringify(body)});
@@ -143,6 +164,10 @@ export class App implements OnInit {
   async command(path:string,body:unknown={}){await this.action(async()=>{const value=await this.api(path,'POST',body);this.result.set(JSON.stringify(value,null,2));this.message.set((path.startsWith('tasks/')||path.startsWith('workflows/'))&&path.endsWith('/run')?'Задание поставлено в очередь. Проверьте «Запуски заданий»; Worker должен быть запущен.':'Действие выполнено.');});}
   async evaluate(row:Row){if(!this.profileId){this.error.set('Сначала выберите профиль.');return;}await this.command('vacancies/'+row['id']+'/evaluate',{profileId:this.profileId});}
   async execute(){if(this.activeAgent)await this.command('agents/'+this.activeAgent['id']+'/execute',{input:this.agentInput});}
+  vacancyUrl(row:Row){
+    const url=(this.data()['vacancies']??[]).find(v=>v['id']===row['vacancyId'])?.['url'];
+    return typeof url==='string'&&['https://','http://'].some(prefix=>url.toLowerCase().startsWith(prefix))?url:null;
+  }
   transitions(row:Row){const allowed:Record<string,string[]>={Discovered:['Evaluating'],Evaluating:['Rejected','Drafting','Blocked'],Drafting:['ReadyForReview','Blocked'],
     ReadyForReview:['Drafting','ReadyToSubmit','Rejected'],ReadyToSubmit:['Blocked'],Blocked:['Drafting','Closed'],Submitted:['Closed'],EmployerResponded:['Closed'],SubmissionUnknown:['Closed']};return allowed[row['state']]??[];}
   display(key:string,value:any):string{const map:Record<string,string>={candidateProfileId:'profiles',vacancyId:'vacancies',scheduledTaskId:'tasks',agentProfileId:'agents',integrationId:'integrations',workflowDefinitionId:'workflows',jobPlatformId:'platforms',browserProfileId:'browser-profiles',jobApplicationId:'applications'};

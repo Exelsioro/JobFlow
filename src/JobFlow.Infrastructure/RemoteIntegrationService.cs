@@ -16,7 +16,7 @@ public sealed class RemoteIntegrationService(JobFlowDb db, SecretStore secrets, 
         ct=deadline.Token;
         try
         {
-            var headers=await secrets.ReadAsync(id,ct);
+            var headers=await new GoogleOAuth(secrets).HeadersAsync(integration,http,ct);
             if(integration.Kind=="google-sheets")
             {
                 using var response=await GetAsync(endpoint,headers,ct);

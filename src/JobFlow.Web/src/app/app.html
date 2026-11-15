@@ -46,6 +46,8 @@
  @if(row['kind']==='csv'){<button class="text-button" (click)="importIntegration=row;csvText=''">Импорт CSV</button>}
  @else{<button class="text-button" [disabled]="saving()||!row['enabled']" (click)="command('integrations/'+row['id']+'/pull')">Прочитать источник</button><button class="text-button" (click)="secretConnection=row;secretJson='{}'">Секреты</button>}
 }
+@if(section()==='integrations'&&['google-sheets','gmail'].includes(row['kind'])){<button class="text-button" [disabled]="saving()" (click)="connectGoogle(row)">Подключить Google</button>}
+@if(section()==='integrations'&&row['kind']==='google-sheets'){<button class="text-button" [disabled]="saving()||!row['enabled']||!row['importConfirmed']" (click)="openSheetExport(row)">Экспорт в Sheets</button>}
 @if(section()==='imports'){<button class="text-button" (click)="result.set(row['rowsJson'])">Просмотр строк</button><button class="text-button" [disabled]="saving()||row['status']!=='Preview'" (click)="command('imports/'+row['id']+'/confirm')">Подтвердить импорт</button>}
 @if(section()==='feedback'){<button class="text-button" (click)="feedbackEvent=row;feedbackApplicationId=''">Связать с откликом</button><button class="text-button" (click)="result.set(row['body'])">Прочитать</button><button class="text-button" [disabled]="saving()||!row['needsAction']" (click)="command('feedback/'+row['id']+'/acknowledge')">Отметить обработанным</button>}
 @if(section()==='mcp'){<button class="text-button" [disabled]="saving()||!row['enabled']" (click)="command('mcp/'+row['id']+'/discover')">Проверить инструменты</button><button class="text-button" (click)="secretConnection=row;secretJson='{}'">Секреты</button>}
@@ -56,10 +58,12 @@
 @if(section()==='agents'){<button class="text-button" (click)="copy(row)">Копировать</button><button class="text-button" (click)="activeAgent=row;agentInput=''" [disabled]="!row['enabled']">Запустить</button>}
 @if(section()==='providers'){<button class="text-button" [disabled]="saving()||!row['enabled']" (click)="command('providers/'+row['id']+'/test')">Проверить</button>}
 @if(section()==='resumes'){<button class="text-button" [disabled]="saving()||row['isPrimary']" (click)="command('resumes/'+row['id']+'/primary')">Сделать основным</button><a [href]="'/api/resumes/versions/'+row['versionId']+'/download'">Скачать</a>}
+@if(section()==='platforms'&&['headhunter','greenhouse'].includes(row['adapter'])){<button class="text-button" [disabled]="saving()" (click)="command('platforms/'+row['id']+'/discover')">Найти вакансии</button>}
 @if(section()==='platforms'&&row['adapter']==='test-form'){<button class="text-button" [disabled]="saving()" (click)="command('platforms/'+row['id']+'/discover')">Извлечь тестовую вакансию</button>}
 @if(section()==='vacancies'){<button class="text-button" [disabled]="saving()" (click)="evaluate(row)">Оценить</button>}
 @if(section()==='tasks'){<button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+'/run')">Запустить</button><button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+(row['enabled']?'/pause':'/resume'))">{{row['enabled']?'Пауза':'Включить'}}</button><button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+'/stop')">Остановить</button>}
 @if(section()==='browser-profiles'){<button class="text-button" [disabled]="saving()" (click)="command('browser-profiles/'+row['id']+(row['busy']?'/close':'/open'))">{{row['busy']?'Закрыть':'Авторизоваться'}}</button><button class="text-button danger" [disabled]="saving()||row['busy']" (click)="removeBrowser(row)">Удалить</button>}
+@if(section()==='applications'&&!row['isTest']&&row['state']==='ReadyToSubmit'&&vacancyUrl(row);as url){<a [href]="url" target="_blank" rel="noopener noreferrer">Открыть вакансию</a>}
 @if(section()==='applications'&&row['isTest']&&row['state']==='ReadyToSubmit'){<button class="text-button" [disabled]="saving()" (click)="testSubmit(row)">Проверить тестовую отправку</button>}
 @if(section()==='applications'&&row['state']==='Submitting'){<button class="text-button" [disabled]="saving()" (click)="command('applications/'+row['id']+'/mark-unknown')">Зафиксировать неизвестный результат</button>}
 @if(section()==='applications'){@for(next of transitions(row);track next){<button class="text-button" [disabled]="saving()" (click)="command('applications/'+row['id']+'/transition',{state:next,revision:row['revision']})">{{next}}</button>}}
@@ -70,6 +74,20 @@
 @if(secretConnection){<section class="editor"><h2>Секреты: {{secretConnection['name']}}</h2><p>JSON-объект переменных окружения для stdio или HTTP-заголовков. Существующие значения не показываются. Сохранение заменит набор целиком.</p><label>Значения<textarea [(ngModel)]="secretJson" autocomplete="off" rows="5"></textarea></label><div class="form-actions"><button class="primary" [disabled]="saving()" (click)="saveSecrets()">Сохранить секреты</button><button class="secondary" (click)="secretConnection=null;secretJson='{}'">Отмена</button></div></section>}
 @if(importIntegration){<section class="editor"><h2>Импорт: {{importIntegration['name']}}</h2><p>Загрузите CSV или вставьте текст. Предварительный просмотр не создаёт вакансий. Подтверждение — в разделе «Импорт журналов».</p><label>Файл CSV<input type="file" accept=".csv,text/csv" (change)="selectCsv($event)"></label><label>Содержимое CSV<textarea [(ngModel)]="csvText" rows="8"></textarea></label><div class="form-actions"><button class="primary" [disabled]="saving()||!csvText" (click)="previewImport()">Предварительный просмотр</button><button class="secondary" (click)="importIntegration=null;csvText=''">Закрыть</button></div></section>}
 @if(feedbackEvent){<section class="editor"><h2>Связать сообщение с откликом</h2><p>{{feedbackEvent['subject']}}</p><label>Отправленный отклик<select [(ngModel)]="feedbackApplicationId"><option value="">Выберите…</option>@for(a of feedbackApplications();track a['id']){<option [value]="a['id']">{{display('vacancyId',a['vacancyId'])}}</option>}</select></label><div class="form-actions"><button class="primary" [disabled]="saving()||!feedbackApplicationId" (click)="linkFeedback()">Подтвердить связь</button><button class="secondary" (click)="feedbackEvent=null">Закрыть</button></div></section>}
+@if(sheetIntegration){
+<section class="editor">
+<h2>Экспорт в Google Sheets</h2>
+<p>Создайте отдельную пустую вкладку в той же таблице. Экспорт заменяет содержимое A1:F501 на этой вкладке.</p>
+<label>Название вкладки<input [ngModel]="sheetTab" (ngModelChange)="sheetTab=$event;sheetPreview=null" maxlength="60"></label>
+<div class="form-actions"><button class="primary" [disabled]="saving()||!sheetTab.trim()" (click)="previewSheet()">Предпросмотр</button><button class="secondary" (click)="sheetIntegration=null;sheetPreview=null">Закрыть</button></div>
+@if(sheetPreview;as preview){
+<p>Записей на вкладке: {{preview.existing.length ? preview.existing.length-1 : 0}}. Будет записано: {{preview.rows.length-1}}.</p>
+<details><summary>Значения до записи</summary><pre>{{preview.existing | json}}</pre></details>
+<details><summary>Значения после записи</summary><pre>{{preview.rows | json}}</pre></details>
+<div class="form-actions"><button class="primary" [disabled]="saving()" (click)="confirmSheet()">Подтвердить запись в Sheets</button></div>
+}
+</section>
+}
 @if(result()){<section class="result"><h2>Результат действия</h2><pre>{{result()}}</pre></section>}
 <footer>JobFlow · Локальный режим · Внешние подключения включаются пользователем</footer>
 </div></main></div>

@@ -16,17 +16,21 @@ builder.Services.AddScoped<IModelProvider, CodexCliProvider>();
 builder.Services.AddScoped<IAgentExecutor, AgentExecutor>();
 builder.Services.AddScoped<JobSearchWorkflow>();
 builder.Services.AddSingleton<SecretStore>();
+builder.Services.AddSingleton<GoogleOAuth>();
 builder.Services.AddScoped<McpGateway>();
 builder.Services.AddScoped<JournalService>();
 builder.Services.AddScoped<IBrowserAutomationProvider, PlaywrightBrowser>();
 builder.Services.AddScoped<IJobApplicationProvider, TestApplicationProvider>();
 builder.Services.AddScoped<TestSubmissionService>();
+builder.Services.AddHttpClient<SheetsWriteBack>(client => client.Timeout = TimeSpan.FromSeconds(30))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddHttpClient<RemoteIntegrationService>().ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<IJobSearchWorkflow>(sp => sp.GetRequiredService<JobSearchWorkflow>());
 builder.Services.AddSingleton<BrowserSessions>();
 builder.Services.AddProblemDetails();
 builder.Logging.ClearProviders();
 builder.Logging.AddJsonConsole();
+builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
 var app = builder.Build();
 using (var scope = app.Services.CreateScope())
     await scope.ServiceProvider.GetRequiredService<JobFlowDb>().Database.MigrateAsync();
@@ -57,7 +61,7 @@ app.MapGet("/api/status", async (JobFlowDb db) => new {
     realSubmissionEnabled = false, profiles = await db.Profiles.CountAsync(), vacancies = await db.Vacancies.CountAsync(),
     applications = await db.Applications.CountAsync(), tasks = await db.Tasks.CountAsync(),
     capabilities = new[] { "Profiles", "PDF resumes", "Manual vacancy import", "Codex CLI", "Isolated browser dry-run", "Interval scheduler", "CSV export", "Durable preparation workflow", "MCP stdio/HTTP read-only tools", "Confirmed CSV/Sheets import", "Gmail/JSON feedback", "Isolated idempotent test submission" },
-    unavailable = new[] { "Real platform submission", "Google Sheets write-back", "BrowserAct" }
+    unavailable = new[] { "Real platform submission", "BrowserAct" }
 });
 app.MapGet("/api/profiles", async (JobFlowDb db) => await db.Profiles.AsNoTracking().OrderBy(x => x.Name).ToListAsync());
 app.MapPost("/api/profiles", async (CandidateProfile input, JobFlowDb db) =>
@@ -110,21 +114,15 @@ app.MapPost("/api/platforms", async (JobPlatform input, JobFlowDb db) =>
 {
     Required(input.Name, "Platform name");
     if (!Uri.TryCreate(input.Url, UriKind.Absolute, out var url) || url.Scheme is not ("http" or "https")) throw new ArgumentException("Enter an HTTP(S) URL.");
-    if (input.Adapter is not ("search-only" or "test-form")) throw new ArgumentException("Adapter not supported.");
+    if (input.Adapter is not ("search-only" or "test-form" or "headhunter" or "greenhouse")) throw new ArgumentException("Adapter not supported.");
     input.Id = Guid.NewGuid(); db.Add(input); Audit(db, input, "Created"); await db.SaveChangesAsync(); return Results.Ok(input);
 });
 app.MapPost("/api/platforms/{id:guid}/discover", async (Guid id, JobFlowDb db, CancellationToken ct) =>
 {
     var platform = await db.Platforms.FindAsync(id) ?? throw new KeyNotFoundException("Platform not found.");
-    var found = await new TestJobDiscoveryProvider().DiscoverAsync(platform, ct);
-    var added = 0;
-    foreach (var vacancy in found)
-    {
-        if (await db.Vacancies.AnyAsync(x => x.JobPlatformId == id && x.ExternalId == vacancy.ExternalId, ct)) continue;
-        db.Add(vacancy); Audit(db, vacancy, "DiscoveredFromTestFixture"); added++;
-    }
-    await db.SaveChangesAsync(ct);
-    return Results.Ok(new { discovered = found.Count, added, testOnly = true });
+    using var http = PlatformDiscovery.CreateClient();
+    var (discovered, added) = await new PlatformDiscovery(db, http).ImportAsync(platform, ct);
+    return Results.Ok(new { discovered, added, testOnly = platform.Adapter == "test-form" });
 });
 app.MapGet("/api/providers", async (JobFlowDb db) => await db.Providers.AsNoTracking().ToListAsync());
 app.MapPost("/api/providers", async (ModelProvider input, JobFlowDb db) =>

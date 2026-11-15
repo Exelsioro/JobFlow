@@ -23,14 +23,10 @@ public sealed class JobSearchWorkflow(JobFlowDb db, IAgentExecutor agents) : IJo
         {
             var platform = await db.Platforms.SingleAsync(x => x.Id == definition.JobPlatformId, ct);
             var profile = await db.Profiles.SingleAsync(x => x.Id == definition.CandidateProfileId, ct);
-            if (platform.Adapter == "test-form")
+            if (platform.Adapter is "test-form" or "headhunter" or "greenhouse")
             {
-                foreach (var found in await new TestJobDiscoveryProvider().DiscoverAsync(platform, ct))
-                {
-                    if (await db.Vacancies.AnyAsync(x => x.JobPlatformId == platform.Id && x.ExternalId == found.ExternalId, ct)) continue;
-                    db.Add(found);
-                }
-                await db.SaveChangesAsync(ct);
+                using var http = PlatformDiscovery.CreateClient();
+                await new PlatformDiscovery(db, http).ImportAsync(platform, ct);
             }
             else if (platform.Adapter != "search-only") throw new InvalidOperationException("Discovery adapter is unsupported.");
             // Search-only consumes explicitly imported vacancies; never pretends to scrape arbitrary URLs.

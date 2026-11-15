@@ -7,6 +7,26 @@ public static class IntegrationEndpoints
 {
     public static void MapIntegrationEndpoints(this WebApplication app)
     {
+        app.MapPost("/api/integrations/{id:guid}/google/connect", async (Guid id, JobFlowDb db, GoogleOAuth oauth, CancellationToken ct) =>
+        {
+            var row = await db.Set<Integration>().SingleAsync(x => x.Id == id, ct);
+            return Results.Ok(new { authorizationUrl = oauth.Start(row) });
+        });
+        app.MapGet("/api/google/oauth/callback", async (string? state, string? code, GoogleOAuth oauth, CancellationToken ct) =>
+        {
+            if (string.IsNullOrEmpty(state)) throw new ArgumentException("Missing Google OAuth state.");
+            using var http = PlatformDiscovery.CreateClient();
+            await oauth.CompleteAsync(state, code, http, ct);
+            return Results.Redirect("/#integrations");
+        });
+        app.MapPost("/api/integrations/{id:guid}/sheets/preview", async (Guid id, SheetTarget input, SheetsWriteBack writer, CancellationToken ct) =>
+            Results.Ok(await writer.PreviewAsync(id, input.Tab, ct)));
+        app.MapPost("/api/integrations/{id:guid}/sheets/confirm", async (Guid id, SheetTarget input, SheetsWriteBack writer, CancellationToken ct) =>
+        {
+            if (input.Digest?.Length != 64) throw new ArgumentException("Preview the export before confirming.");
+            var result = await writer.PreviewAsync(id, input.Tab, ct, input.Digest);
+            return Results.Ok(new { exported = result.Rows.Length - 1, result.Tab });
+        });
         app.MapGet("/api/integrations", async (JobFlowDb db, SecretStore secrets) =>
             (await db.Set<Integration>().AsNoTracking().ToListAsync()).Select(x => new { x.Id,x.Name,x.Kind,x.CandidateProfileId,x.JobPlatformId,
                 x.MappingJson,x.ConflictPolicy,x.ImportConfirmed,x.LastStatus,x.LastCheckedAt,x.Endpoint,x.Enabled,hasSecrets=secrets.Exists(x.Id) }));
@@ -63,8 +83,13 @@ public static class IntegrationEndpoints
             if(!await db.Platforms.AnyAsync(x=>x.Id==input.JobPlatformId,ct))throw new ArgumentException("Choose a platform for the journal.");
             _=JsonSerializer.Deserialize<Dictionary<string,string>>(input.MappingJson)??throw new ArgumentException("Mapping must be an object.");
         }
-        if(input.Kind!="csv"&&!Uri.TryCreate(input.Endpoint,UriKind.Absolute,out _))throw new ArgumentException("Integration endpoint is required.");
+        if(input.Kind!="csv")
+        {
+            if (!Uri.TryCreate(input.Endpoint,UriKind.Absolute,out var endpoint)) throw new ArgumentException("Integration endpoint is required.");
+            RemoteIntegrationService.ValidateEndpoint(input.Kind, endpoint);
+        }
     }
+    public record SheetTarget(string Tab, string? Digest);
     public record FeedbackLink(Guid ApplicationId);
     public record CsvInput(string Csv);
 }
