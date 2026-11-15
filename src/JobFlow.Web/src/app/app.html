@@ -52,14 +52,16 @@
 @if(section()==='workflows'){<button class="text-button" [disabled]="saving()||!row['enabled']" (click)="command('workflows/'+row['id']+'/run')">Запустить workflow</button>}
 @if(section()==='evaluations'){<button class="text-button" (click)="result.set(row['resultJson'])">Обоснование</button>}
 @if(section()==='applications'){<button class="text-button" [disabled]="!['Drafting','ReadyForReview'].includes(row['state'])" (click)="editLetter(row)">Письмо</button>}
-@if(['profiles','agents','providers','workflows','mcp','integrations'].includes(section())){<button class="text-button" (click)="edit(row)">Изменить</button>}
+@if(['profiles','agents','providers','workflows','mcp','integrations','tasks','accounts'].includes(section())){<button class="text-button" (click)="edit(row)">Изменить</button>}
 @if(section()==='agents'){<button class="text-button" (click)="copy(row)">Копировать</button><button class="text-button" (click)="activeAgent=row;agentInput=''" [disabled]="!row['enabled']">Запустить</button>}
 @if(section()==='providers'){<button class="text-button" [disabled]="saving()||!row['enabled']" (click)="command('providers/'+row['id']+'/test')">Проверить</button>}
-@if(section()==='resumes'){<a [href]="'/api/resumes/versions/'+row['versionId']+'/download'">Скачать</a>}
+@if(section()==='resumes'){<button class="text-button" [disabled]="saving()||row['isPrimary']" (click)="command('resumes/'+row['id']+'/primary')">Сделать основным</button><a [href]="'/api/resumes/versions/'+row['versionId']+'/download'">Скачать</a>}
 @if(section()==='platforms'&&row['adapter']==='test-form'){<button class="text-button" [disabled]="saving()" (click)="command('platforms/'+row['id']+'/discover')">Извлечь тестовую вакансию</button>}
 @if(section()==='vacancies'){<button class="text-button" [disabled]="saving()" (click)="evaluate(row)">Оценить</button>}
-@if(section()==='tasks'){<button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+'/run')">Запустить</button><button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+(row['enabled']?'/pause':'/resume'))">{{row['enabled']?'Пауза':'Включить'}}</button>}
+@if(section()==='tasks'){<button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+'/run')">Запустить</button><button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+(row['enabled']?'/pause':'/resume'))">{{row['enabled']?'Пауза':'Включить'}}</button><button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+'/stop')">Остановить</button>}
 @if(section()==='browser-profiles'){<button class="text-button" [disabled]="saving()" (click)="command('browser-profiles/'+row['id']+(row['busy']?'/close':'/open'))">{{row['busy']?'Закрыть':'Авторизоваться'}}</button><button class="text-button danger" [disabled]="saving()||row['busy']" (click)="removeBrowser(row)">Удалить</button>}
+@if(section()==='applications'&&row['isTest']&&row['state']==='ReadyToSubmit'){<button class="text-button" [disabled]="saving()" (click)="testSubmit(row)">Проверить тестовую отправку</button>}
+@if(section()==='applications'&&row['state']==='Submitting'){<button class="text-button" [disabled]="saving()" (click)="command('applications/'+row['id']+'/mark-unknown')">Зафиксировать неизвестный результат</button>}
 @if(section()==='applications'){@for(next of transitions(row);track next){<button class="text-button" [disabled]="saving()" (click)="command('applications/'+row['id']+'/transition',{state:next,revision:row['revision']})">{{next}}</button>}}
 </td></tr>}</tbody></table></div>}
 @else{<div class="empty"><h2>{{query()?'Совпадений нет':'Здесь пока нет записей'}}</h2><p>{{query()?'Попробуйте другой запрос.':'Данные появятся после настройки или первого запуска. Демонстрационные записи не добавляются автоматически.'}}</p></div>}}

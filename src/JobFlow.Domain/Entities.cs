@@ -70,6 +70,7 @@ public class VacancyEvaluation : Entity
 public enum ApplicationState { Discovered, Evaluating, Rejected, Drafting, ReadyForReview, ReadyToSubmit, Submitting, SubmissionUnknown, Submitted, Blocked, EmployerResponded, Closed }
 public class JobApplication : Entity
 {
+    public bool IsTest { get; set; }
     public Guid? WorkflowDefinitionId { get; set; }
     public Guid CandidateProfileId { get; set; }
     public Guid VacancyId { get; set; }
@@ -138,6 +139,7 @@ public class ToolConnection : Entity
 public class BrowserProfile : Entity { public string Name { get; set; } = ""; }
 public class ScheduledTask : Entity
 {
+    public Guid? IntegrationId { get; set; } public int TimeoutSeconds { get; set; } = 300; public int MaxRetries { get; set; } = 2; public int FailureCount { get; set; } public bool CancelRequested { get; set; }
     public Guid? WorkflowDefinitionId { get; set; }
     public Guid CandidateProfileId { get; set; }
     public string Name { get; set; } = "";

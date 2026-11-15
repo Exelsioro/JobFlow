@@ -91,7 +91,41 @@ try
     await page.GetByRole(AriaRole.Status).Filter(new() { HasText = "Задание поставлено в очередь" }).WaitForAsync();
     await page.SetViewportSizeAsync(1440, 1080);
     await page.ScreenshotAsync(new() { Path = Path.Combine(review, "desktop-records.png"), FullPage = true });
-    Console.WriteLine("PASS: Angular profile creation, API persistence, reload, mobile overflow, no JS errors, independent Worker.");
+    var profileId=profiles[0].GetProperty("id").GetGuid();
+    using var upload=new MultipartFormDataContent();
+    upload.Add(new StringContent(profileId.ToString()),"profileId");
+    upload.Add(new ByteArrayContent(System.Text.Encoding.ASCII.GetBytes("%PDF-1.4\\nSynthetic fixture\\n%%EOF")),"file","workflow.pdf");
+    var uploadResponse=await http.PostAsync("/api/resumes",upload);uploadResponse.EnsureSuccessStatusCode();
+    var version=await uploadResponse.Content.ReadFromJsonAsync<JsonElement>();
+    var platformResponse=await http.PostAsJsonAsync("/api/platforms",new{name="Workflow fixture",url="https://example.invalid",adapter="test-form"});
+    platformResponse.EnsureSuccessStatusCode();var platform=await platformResponse.Content.ReadFromJsonAsync<JsonElement>();
+    var definitionResponse=await http.PostAsJsonAsync("/api/workflows",new{name="Full preparation",candidateProfileId=profileId,jobPlatformId=platform.GetProperty("id").GetGuid(),resumeVersionId=version.GetProperty("id").GetGuid(),enabled=true,rulesJson="{}"});
+    definitionResponse.EnsureSuccessStatusCode();
+    await page.ReloadAsync();
+    await page.GetByLabel("Рабочий профиль").SelectOptionAsync(profileId.ToString());
+    await page.GetByRole(AriaRole.Button,new(){Name="Workflow",Exact=true}).ClickAsync();
+    await page.GetByRole(AriaRole.Button,new(){Name="Запустить workflow",Exact=true}).ClickAsync();
+    var prepared=false;
+    for(var i=0;i<60;i++){
+        var applications=await http.GetFromJsonAsync<JsonElement[]>("/api/applications");
+        if(applications!.Any(x=>x.GetProperty("state").GetString()=="ReadyForReview")){prepared=true;break;}
+        await Task.Delay(500);
+    }
+    if(!prepared)throw new InvalidOperationException("Workflow did not prepare application.");
+    await page.ReloadAsync();
+    await page.GetByLabel("Рабочий профиль").SelectOptionAsync(profileId.ToString());
+    await page.GetByRole(AriaRole.Button,new(){Name="Отклики",Exact=true}).ClickAsync();
+    await page.GetByRole(AriaRole.Button,new(){Name="Письмо",Exact=true}).ClickAsync();
+    await page.GetByLabel("Текст письма").FillAsync("Reviewed synthetic C# experience.");
+    await page.GetByRole(AriaRole.Button,new(){Name="Сохранить письмо",Exact=true}).ClickAsync();
+    await page.GetByRole(AriaRole.Button,new(){Name="ReadyToSubmit",Exact=true}).ClickAsync();
+    await page.GetByRole(AriaRole.Button,new(){Name="Проверить тестовую отправку",Exact=true}).ClickAsync();
+    await page.GetByRole(AriaRole.Cell,new(){Name="Submitted",Exact=true}).WaitForAsync();
+    await page.GetByRole(AriaRole.Button,new(){Name="Попытки отправки",Exact=true}).ClickAsync();
+    await page.GetByRole(AriaRole.Cell,new(){Name="TestConfirmed",Exact=true}).WaitForAsync();
+    await page.ScreenshotAsync(new(){Path=Path.Combine(review,"workflow-submitted.png"),FullPage=true});
+    if(errors.Count>0)throw new InvalidOperationException(string.Join("\\n",errors));
+    Console.WriteLine("PASS: UI profile, durable workflow, review editor, approval, isolated test submission, independent Worker, no JS errors.");
     Console.WriteLine("Screenshots: " + review);
 }
 finally

@@ -17,6 +17,7 @@ export class App implements OnInit {
   draftApplication:Row|null=null; draftLetter='';
   async editLetter(row:Row){this.draftApplication={...row};this.draftLetter=row['coverLetter'];}
   async saveLetter(){if(!this.draftApplication)return;await this.action(async()=>{await this.api('applications/'+this.draftApplication!['id']+'/draft','PUT',{letter:this.draftLetter,revision:this.draftApplication!['revision']});this.draftApplication=null;this.message.set('Черновик сохранён.');});}
+  async testSubmit(row:Row){await this.command('applications/'+row['id']+'/test-submit',{idempotencyKey:'test-'+row['id'],revision:row['revision']});}
   async template(kind:string){await this.action(async()=>{const all=await this.api('agent-templates');const value=all.find((x:Row)=>x['taskType']===kind);this.draft={...this.draft,...value,userPromptTemplate:'{{input}}'};});}
   sections:Section[]=[
     {key:'workflows',title:'Workflow',description:'Поиск → оценка → письмо → ручная проверка. Без AI используются правила и письмо из фактов профиля. Выполняет Worker.',columns:['name','enabled','revision'],fields:[
@@ -34,7 +35,8 @@ export class App implements OnInit {
       {key:'education',label:'Образование',type:'textarea'},{key:'languages',label:'Языки'},{key:'preferredRoles',label:'Предпочитаемые роли'},
       {key:'geography',label:'География'},{key:'salary',label:'Зарплата и валюта'},{key:'relocation',label:'Релокация'},
       {key:'excludedEmployers',label:'Исключённые работодатели через запятую'},{key:'rules',label:'Правила поиска',type:'textarea'}]},
-    {key:'resumes',title:'Резюме',description:'Локальные PDF и версии. Каждый отклик привязан к конкретной версии.',columns:['name','version','originalName','createdAt']},
+    {key:'resumes',title:'Резюме',description:'Локальные PDF и версии. Каждый отклик привязан к конкретной версии.',columns:['name','isPrimary','version','originalName','createdAt']},
+    {key:'accounts',title:'Аккаунты площадок',description:'Связи профиля кандидата, площадки и браузера. Внешний ID резюме задаётся вручную; его актуальность не подтверждена площадкой.',columns:['candidateProfileId','jobPlatformId','browserProfileId','externalResumeId'],fields:[{key:'candidateProfileId',label:'Профиль',type:'select',source:'profiles',required:true},{key:'jobPlatformId',label:'Площадка',type:'select',source:'platforms',required:true},{key:'browserProfileId',label:'Браузерный профиль',type:'select',source:'browser-profiles'},{key:'externalResumeId',label:'ID резюме на площадке'}]},
     {key:'platforms',title:'Площадки',description:'Добавление URL не включает автоматическую отправку.',columns:['name','url','adapter'],fields:[
       {key:'name',label:'Название',required:true},{key:'url',label:'URL',type:'url',required:true},
       {key:'adapter',label:'Адаптер',type:'select',options:['search-only','test-form']},{key:'geography',label:'География'},{key:'searchFilters',label:'Фильтры поиска',type:'textarea'}]},
@@ -66,7 +68,8 @@ export class App implements OnInit {
     {key:'browser-profiles',title:'Браузерные профили',description:'Отдельные профили Playwright для ручной авторизации. Cookies хранятся локально.',columns:['name','busy'],fields:[{key:'name',label:'Название',required:true}]},
     {key:'tasks',title:'Планировщик',description:'Задания выполняет Worker независимо от браузера. Интервалы считаются в UTC.',columns:['name','kind','intervalMinutes','enabled','nextRunAt'],fields:[
       {key:'name',label:'Название',required:true},{key:'candidateProfileId',label:'Профиль',type:'select',source:'profiles',required:true},
-      {key:'kind',label:'Действие',type:'select',options:['HealthCheck','BrowserDryRun']},{key:'intervalMinutes',label:'Интервал в минутах',type:'number',required:true},
+      {key:'kind',label:'Действие',type:'select',options:['HealthCheck','BrowserDryRun','Integration','Workflow']},{key:'intervalMinutes',label:'Интервал в минутах',type:'number',required:true},
+      {key:'integrationId',label:'Интеграция',type:'select',source:'integrations'},{key:'timeoutSeconds',label:'Тайм-аут, секунды (5–900)',type:'number'},{key:'maxRetries',label:'Повторы после ошибки (0–5)',type:'number'},
       {key:'timeZone',label:'Часовой пояс IANA',required:true},{key:'enabled',label:'Включить расписание',type:'checkbox'}]},
     {key:'integrations',title:'Интеграции',description:'CSV и Google Sheets: импорт после подтверждения. Gmail и JSON: чтение событий без отправки ответов.',columns:['name','kind','lastStatus','importConfirmed','enabled'],fields:[
  {key:'name',label:'Название',required:true},{key:'candidateProfileId',label:'Профиль',type:'select',source:'profiles',required:true},
@@ -78,6 +81,7 @@ export class App implements OnInit {
  {key:'imports',title:'Импорт журналов',description:'Проверьте строки перед подтверждением. Исторические отклики блокируют повторные заявки.',columns:['integrationId','status','rowCount','added','duplicates','conflicts','createdAt']},
  {key:'imported-applications',title:'История из журналов',description:'Подтверждённый импорт исторических заявок. Эти вакансии исключаются из новых откликов.',columns:['candidateProfileId','vacancyId','sourceState','sourceKey']},
  {key:'feedback',title:'Обратная связь',description:'Сообщения из настроенных источников. Ответы автоматически не отправляются.',columns:['subject','receivedAt','needsAction']},
+    {key:'application-attempts',title:'Попытки отправки',description:'Только изолированный тестовый адаптер. Pending и SubmissionUnknown запрещают повторную отправку.',columns:['jobApplicationId','outcome','evidence','createdAt']},
     {key:'runs',title:'Запуски заданий',description:'История работы фонового процесса.',columns:['scheduledTaskId','status','message','createdAt','finishedAt']},
     {key:'executions',title:'Запуски агентов',description:'Модель и версия конфигурации. Вход и выход по умолчанию не сохраняются.',columns:['agentProfileId','configurationVersion','model','status','error','createdAt']},
     {key:'logs',title:'Журнал событий',description:'История изменений рабочего пространства.',columns:['entityType','action','entityId','createdAt']}
@@ -106,7 +110,7 @@ export class App implements OnInit {
     if(!this.profileId&&this.data()['profiles']?.length)this.profileId=this.data()['profiles'][0]['id'];
   }catch(e){this.error.set((e as Error).message);}finally{this.loading.set(false);}}
   create(){this.draft={mappingJson:'{"externalId":"Id","title":"Title","employer":"Employer","url":"Url","description":"Description","applicationState":"Status"}',conflictPolicy:'keep-local',transport:'stdio',argumentsJson:'[]',permissionsJson:'[]',toolBindingsJson:'[]',rulesJson:'{}',candidateProfileId:this.profileId,adapter:'search-only',kind:this.section()==='tasks'?'HealthCheck':this.section()==='integrations'?'csv':'codex-cli',timeoutSeconds:120,
-    intervalMinutes:60,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone,enabled:false,taskType:'Evaluation',userPromptTemplate:'{{input}}',
+    intervalMinutes:60,maxRetries:2,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone,enabled:false,taskType:'Evaluation',userPromptTemplate:'{{input}}',
     systemPrompt:'Use only verified candidate facts. Clearly identify uncertainty.',
     outputSchema:'{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"],"additionalProperties":false}'};this.editing.set(true);this.error.set('');}
   edit(row:Row){this.draft={...row};this.editing.set(true);}
@@ -114,7 +118,7 @@ export class App implements OnInit {
   options(field:Field){let list=field.source?this.data()[field.source]??[]:[];if(field.source==='resumes')list=list.filter(x=>x['candidateProfileId']===this.draft['candidateProfileId']);return list;}
   optionId(field:Field,row:Row){return field.source==='resumes'?row['versionId']:row['id'];}
   optionName(row:Row){return(row['name']??row['title']??row['id'])+(row['version']?' · v'+row['version']:'');}
-  async save(){await this.action(async()=>{for(const key of ['evaluationAgentId','letterAgentId','jobPlatformId'])if(this.draft[key]==='')this.draft[key]=null;await this.api(this.section()+(this.draft['id']?'/'+this.draft['id']:''),this.draft['id']?'PUT':'POST',this.draft);this.editing.set(false);this.message.set('Сохранено.');});}
+  async save(){await this.action(async()=>{for(const key of ['evaluationAgentId','letterAgentId','jobPlatformId','integrationId','browserProfileId'])if(this.draft[key]==='')this.draft[key]=null;await this.api(this.section()+(this.draft['id']?'/'+this.draft['id']:''),this.draft['id']?'PUT':'POST',this.draft);this.editing.set(false);this.message.set('Сохранено.');});}
   chooseFile(event:Event){this.file=(event.target as HTMLInputElement).files?.[0]??null;}
   uniqueResumes(){return [...new Map((this.data()['resumes']??[]).filter(x=>x['candidateProfileId']===this.profileId).map(x=>[x['id'],x])).values()];}
   async upload(){if(!this.file||!this.profileId){this.error.set('Выберите профиль и PDF.');return;}await this.action(async()=>{

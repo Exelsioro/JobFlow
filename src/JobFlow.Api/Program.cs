@@ -18,6 +18,9 @@ builder.Services.AddScoped<JobSearchWorkflow>();
 builder.Services.AddSingleton<SecretStore>();
 builder.Services.AddScoped<McpGateway>();
 builder.Services.AddScoped<JournalService>();
+builder.Services.AddScoped<IBrowserAutomationProvider, PlaywrightBrowser>();
+builder.Services.AddScoped<IJobApplicationProvider, TestApplicationProvider>();
+builder.Services.AddScoped<TestSubmissionService>();
 builder.Services.AddHttpClient<RemoteIntegrationService>().ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<IJobSearchWorkflow>(sp => sp.GetRequiredService<JobSearchWorkflow>());
 builder.Services.AddSingleton<BrowserSessions>();
@@ -54,7 +57,7 @@ app.MapGet("/api/status", async (JobFlowDb db) => new {
     realSubmissionEnabled = false, profiles = await db.Profiles.CountAsync(), vacancies = await db.Vacancies.CountAsync(),
     applications = await db.Applications.CountAsync(), tasks = await db.Tasks.CountAsync(),
     capabilities = new[] { "Profiles", "PDF resumes", "Manual vacancy import", "Codex CLI", "Isolated browser dry-run", "Interval scheduler", "CSV export" },
-    unavailable = new[] { "Real platform submission", "Google Sheets sync", "Gmail monitoring", "MCP execution", "BrowserAct" }
+    unavailable = new[] { "Real platform submission", "Google Sheets write-back", "BrowserAct" }
 });
 app.MapGet("/api/profiles", async (JobFlowDb db) => await db.Profiles.AsNoTracking().OrderBy(x => x.Name).ToListAsync());
 app.MapPost("/api/profiles", async (CandidateProfile input, JobFlowDb db) =>
@@ -179,6 +182,7 @@ app.MapPost("/api/applications", async (JobApplication input, JobFlowDb db) =>
         where v.Id == input.ResumeVersionId && r.CandidateProfileId == input.CandidateProfileId select v).AnyAsync())
         throw new ArgumentException("Resume version must belong to the selected profile.");
     if(await db.Set<HistoricalApplication>().AnyAsync(x=>x.CandidateProfileId==input.CandidateProfileId&&x.VacancyId==input.VacancyId))throw new ArgumentException("Imported application history exists; do not apply again.");
+    input.IsTest=await (from v in db.Vacancies join p in db.Platforms on v.JobPlatformId equals p.Id where v.Id==input.VacancyId && p.Adapter=="test-form" select v).AnyAsync();
     input.Id = Guid.NewGuid(); input.State = ApplicationState.Discovered; input.Revision = 0;
     db.Add(input); Audit(db, input, "Created"); await db.SaveChangesAsync(); return Results.Ok(input);
 });
@@ -189,7 +193,7 @@ app.MapPost("/api/applications/{id:guid}/transition", async (Guid id, Transition
     if (input.State is ApplicationState.Submitting or ApplicationState.Submitted or ApplicationState.SubmissionUnknown or ApplicationState.EmployerResponded)
         throw new ArgumentException("This transition requires verified adapter evidence. Real submission is disabled.");
     if (input.State == ApplicationState.ReadyToSubmit && string.IsNullOrWhiteSpace(row.CoverLetter)) throw new ArgumentException("Prepare a cover letter before review approval.");
-    if (input.State == ApplicationState.ReadyToSubmit && await db.Set<Integration>().AnyAsync(x => x.CandidateProfileId == row.CandidateProfileId && !x.ImportConfirmed)) throw new ArgumentException("Confirm the existing journal import before approval.");
+    if (input.State == ApplicationState.ReadyToSubmit && await db.Set<Integration>().AnyAsync(x => x.CandidateProfileId == row.CandidateProfileId && (x.Kind=="csv"||x.Kind=="google-sheets") && !x.ImportConfirmed)) throw new ArgumentException("Confirm the existing journal import before approval.");
     if(input.State==ApplicationState.ReadyToSubmit && await db.Set<HistoricalApplication>().AnyAsync(x=>x.CandidateProfileId==row.CandidateProfileId&&x.VacancyId==row.VacancyId))throw new ArgumentException("Imported application history blocks resubmission.");
     var previous = row.State; Workflow.Transition(row, input.State);
     Audit(db, row, "StateChanged", $"{previous} -> {row.State}"); await db.SaveChangesAsync(); return Results.Ok(row);
@@ -198,11 +202,24 @@ app.MapGet("/api/tasks", async (JobFlowDb db) => await db.Tasks.AsNoTracking().T
 app.MapPost("/api/tasks", async (ScheduledTask input, JobFlowDb db) =>
 {
     Required(input.Name, "Task name");
-    if (input.Kind is not ("HealthCheck" or "BrowserDryRun")) throw new ArgumentException("Only HealthCheck and BrowserDryRun are supported.");
+    if (input.Kind is not ("HealthCheck" or "BrowserDryRun" or "Integration")) throw new ArgumentException("Unsupported task kind.");
+    if(input.TimeoutSeconds is < 5 or > 900 || input.MaxRetries is < 0 or > 5)throw new ArgumentException("Timeout: 5–900 seconds; retries: 0–5.");
+    if(input.Kind=="Integration"&&!await db.Set<Integration>().AnyAsync(x=>x.Id==input.IntegrationId&&x.CandidateProfileId==input.CandidateProfileId))throw new ArgumentException("Integration must belong to the selected profile.");
+    input.FailureCount=0;input.CancelRequested=false;
     if (input.IntervalMinutes is < 1 or > 525600) throw new ArgumentException("Interval must be 1–525600 minutes.");
     try { TimeZoneInfo.FindSystemTimeZoneById(input.TimeZone); } catch { throw new ArgumentException("Unknown timezone."); }
     input.Id = Guid.NewGuid(); input.RunRequested = false; input.LeaseUntil = null; input.LeaseToken = null; input.NextRunAt = DateTime.UtcNow.AddMinutes(input.IntervalMinutes);
     db.Add(input); Audit(db, input, "Created"); await db.SaveChangesAsync(); return Results.Ok(input);
+});
+app.MapPut("/api/tasks/{id:guid}", async (Guid id, ScheduledTask input, JobFlowDb db) =>
+{
+    var row=await db.Tasks.FindAsync(id)??throw new KeyNotFoundException("Task not found.");
+    Required(input.Name,"Task name");
+    if(input.IntervalMinutes is < 1 or > 525600 || input.TimeoutSeconds is < 5 or > 900 || input.MaxRetries is < 0 or > 5)throw new ArgumentException("Invalid interval, timeout or retries.");
+    try { TimeZoneInfo.FindSystemTimeZoneById(input.TimeZone); } catch { throw new ArgumentException("Unknown timezone."); }
+    if(row.Kind!=input.Kind || row.CandidateProfileId!=input.CandidateProfileId || row.IntegrationId!=input.IntegrationId)throw new ArgumentException("Task source cannot change; create a new task.");
+    row.Name=input.Name;row.IntervalMinutes=input.IntervalMinutes;row.TimeoutSeconds=input.TimeoutSeconds;row.MaxRetries=input.MaxRetries;row.TimeZone=input.TimeZone;row.Enabled=input.Enabled;
+    Audit(db,row,"Updated");await db.SaveChangesAsync();return Results.Ok(row);
 });
 app.MapPost("/api/tasks/{id:guid}/{action}", async (Guid id, string action, JobFlowDb db) =>
 {
@@ -211,7 +228,8 @@ app.MapPost("/api/tasks/{id:guid}/{action}", async (Guid id, string action, JobF
     {
         case "run":
             if (row.LeaseUntil > DateTime.UtcNow) return Results.Conflict(new { error = "Task is running." });
-            row.RunRequested = true; break;
+            row.RunRequested = true; row.NextRunAt=DateTime.UtcNow; row.FailureCount=0; break;
+        case "stop": row.Enabled=false;row.RunRequested=false;row.CancelRequested=true;break;
         case "pause": row.Enabled = false; row.RunRequested = false; break;
         case "resume": row.Enabled = true; break;
         default: throw new ArgumentException("Unknown action.");
@@ -252,6 +270,7 @@ app.MapGet("/api/export/vacancies.csv", async (JobFlowDb db, CancellationToken c
     Results.File(System.Text.Encoding.UTF8.GetBytes(await new CsvJournal().ExportAsync(await db.Vacancies.AsNoTracking().ToListAsync(ct), ct)), "text/csv", "vacancies.csv"));
 app.MapIntegrationEndpoints();
 app.MapWorkflowEndpoints();
+app.MapResumeEndpoints();
 app.MapMcpEndpoints();
 app.MapFallbackToFile("index.html");
 await app.RunAsync();

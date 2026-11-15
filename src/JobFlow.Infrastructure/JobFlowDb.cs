@@ -31,6 +31,7 @@ public class JobFlowDb(DbContextOptions<JobFlowDb> options) : DbContext(options)
         b.Entity<ScheduledTask>().HasOne<WorkflowDefinition>().WithMany().HasForeignKey(x => x.WorkflowDefinitionId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<ScheduledTask>().HasIndex(x => x.WorkflowDefinitionId).IsUnique();
         b.Entity<JobApplication>().HasOne<WorkflowDefinition>().WithMany().HasForeignKey(x => x.WorkflowDefinitionId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<ScheduledTask>().HasOne<Integration>().WithMany().HasForeignKey(x=>x.IntegrationId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<Integration>().HasOne<JobPlatform>().WithMany().HasForeignKey(x=>x.JobPlatformId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<JournalImport>().HasOne<Integration>().WithMany().HasForeignKey(x=>x.IntegrationId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<HistoricalApplication>().HasOne<Integration>().WithMany().HasForeignKey(x=>x.IntegrationId).OnDelete(DeleteBehavior.Restrict);

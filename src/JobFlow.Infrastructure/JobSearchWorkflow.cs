@@ -47,7 +47,7 @@ public sealed class JobSearchWorkflow(JobFlowDb db, IAgentExecutor agents) : IJo
                 if (run.Prepared + run.Rejected >= 10) break;
                 if (application == null)
                 {
-                    application = new JobApplication { CandidateProfileId = profile.Id, VacancyId = vacancy.Id, ResumeVersionId = definition.ResumeVersionId, WorkflowDefinitionId = definitionId };
+                    application = new JobApplication { IsTest = platform.Adapter=="test-form", CandidateProfileId = profile.Id, VacancyId = vacancy.Id, ResumeVersionId = definition.ResumeVersionId, WorkflowDefinitionId = definitionId };
                     db.Add(application); await db.SaveChangesAsync(ct);
                 }
                 try

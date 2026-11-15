@@ -7,6 +7,9 @@ public static class WorkflowEndpoints
 {
     public static void MapWorkflowEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/application-attempts",async(JobFlowDb db)=>await db.Set<ApplicationAttempt>().AsNoTracking().OrderByDescending(x=>x.CreatedAt).ToListAsync());
+        app.MapPost("/api/applications/{id:guid}/test-submit",async(Guid id,TestSubmissionInput input,TestSubmissionService service,CancellationToken ct)=>Results.Ok(await service.SubmitAsync(id,input.IdempotencyKey,input.Revision,ct)));
+        app.MapPost("/api/applications/{id:guid}/mark-unknown",async(Guid id,TestSubmissionService service,CancellationToken ct)=>{await service.MarkUnknownAsync(id,ct);return Results.Ok(new{status="SubmissionUnknown"});});
         app.MapGet("/api/workflows", async (JobFlowDb db) => await db.Set<WorkflowDefinition>().AsNoTracking().ToListAsync());
         app.MapGet("/api/workflow-runs", async (JobFlowDb db) => await db.Set<WorkflowRun>().AsNoTracking().OrderByDescending(x => x.CreatedAt).Take(200).ToListAsync());
         app.MapGet("/api/agent-templates", () => AgentTemplates.All);
@@ -35,11 +38,12 @@ public static class WorkflowEndpoints
             if (!definition.Enabled) throw new ArgumentException("Enable the workflow first.");
             var task = await db.Tasks.SingleAsync(x => x.WorkflowDefinitionId == id, ct);
             if (task.LeaseUntil > DateTime.UtcNow) return Results.Conflict(new { error = "Workflow is already running." });
-            task.RunRequested = true; await db.SaveChangesAsync(ct); return Results.Ok(new { queued = true, taskId = task.Id });
+            task.RunRequested = true; task.NextRunAt=DateTime.UtcNow; task.FailureCount=0; await db.SaveChangesAsync(ct); return Results.Ok(new { queued = true, taskId = task.Id });
         });
         app.MapPut("/api/applications/{id:guid}/draft", async (Guid id, DraftInput input, IJobSearchWorkflow workflow, CancellationToken ct) =>
         { await workflow.SaveDraftAsync(id, input.Letter, input.Revision, ct); return Results.Ok(new { saved = true }); });
     }
+    public record TestSubmissionInput(string IdempotencyKey,int Revision);
     public record DraftInput(string Letter, int Revision);
 }
 

@@ -456,6 +456,9 @@ namespace JobFlow.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("IsTest")
+                        .HasColumnType("INTEGER");
+
                     b.Property<Guid>("ResumeVersionId")
                         .HasColumnType("TEXT");
 
@@ -702,6 +705,9 @@ namespace JobFlow.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("CancelRequested")
+                        .HasColumnType("INTEGER");
+
                     b.Property<Guid>("CandidateProfileId")
                         .HasColumnType("TEXT");
 
@@ -710,6 +716,12 @@ namespace JobFlow.Infrastructure.Migrations
 
                     b.Property<bool>("Enabled")
                         .HasColumnType("INTEGER");
+
+                    b.Property<int>("FailureCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("IntegrationId")
+                        .HasColumnType("TEXT");
 
                     b.Property<int>("IntervalMinutes")
                         .HasColumnType("INTEGER");
@@ -723,6 +735,9 @@ namespace JobFlow.Infrastructure.Migrations
 
                     b.Property<DateTime?>("LeaseUntil")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("MaxRetries")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -738,12 +753,17 @@ namespace JobFlow.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("TimeoutSeconds")
+                        .HasColumnType("INTEGER");
+
                     b.Property<Guid?>("WorkflowDefinitionId")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
                     b.HasIndex("CandidateProfileId");
+
+                    b.HasIndex("IntegrationId");
 
                     b.HasIndex("WorkflowDefinitionId")
                         .IsUnique();
@@ -1225,6 +1245,11 @@ namespace JobFlow.Infrastructure.Migrations
                         .HasForeignKey("CandidateProfileId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("JobFlow.Domain.Integration", null)
+                        .WithMany()
+                        .HasForeignKey("IntegrationId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("JobFlow.Domain.WorkflowDefinition", null)
                         .WithMany()
