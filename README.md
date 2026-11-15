@@ -1,9 +1,100 @@
 # JobFlow
 
-Local-first, self-hosted job-search workspace. ASP.NET Core, Angular, EF Core SQLite and an independent worker.
+Универсальное локальное рабочее пространство поиска работы: ASP.NET Core 10, Angular 22, SQLite/EF Core, отдельный .NET Worker, Codex CLI и Playwright.
 
-Under development. Real application submission is disabled. No personal data or external accounts are required.
+**Это работающий промежуточный результат разработки, а не завершённый MVP.** Реальная отправка откликов отключена и не имеет переключателя включения. Полный статус — [docs/PROGRESS.md](docs/PROGRESS.md).
 
-License: MIT, chosen to permit private self-hosting and modification without distribution obligations beyond preserving the license notice.
+## Что уже работает
 
-See docs/PROGRESS.md for verified capabilities and remaining work.
+- Пустой запуск; создание и редактирование нескольких профилей.
+- PDF до 10 МБ, версии резюме и проверка принадлежности версии профилю отклика.
+- Площадки и ручной импорт вакансий; извлечение искусственной вакансии через изолированный Playwright-адаптер.
+- Консервативная оценка совпадений и исключённых работодателей; это не полная AI-оценка.
+- Создание, редактирование, копирование и отключение агентов; версии конфигурации и история выполнения.
+- Реальный Codex CLI со stdin, тайм-аутом, structured output и независимой JSON Schema validation.
+- Проверка тестовой браузерной формы, включая неизвестные поля, потерю авторизации и отсутствие квитанции.
+- Браузерные профили для ручной авторизации, сохранение cookies, закрытие и подтверждаемое удаление.
+- Состояния отклика, журнал переходов, уникальные ключи и optimistic concurrency.
+- Сохраняемые интервальные задания HealthCheck/BrowserDryRun, ручной запуск, пауза, история, leases и восстановление.
+- CSV-экспорт вакансий с защитой от spreadsheet formula injection.
+- Адаптивный Angular UI, связанный с API.
+
+MCP, Gmail, Google Sheets, реальные адаптеры отправки, полноценная синхронизация журналов и автоматическая цепочка поиска/оценки/письма ещё не реализованы. UI обозначает это явно.
+
+## Требования
+
+- .NET 10 SDK и совместимый runtime.
+- Node.js 26 (либо поддерживаемая Angular 22 версия из официальной таблицы), npm.
+- PowerShell 7 для Windows-скриптов.
+- Chromium Playwright; устанавливается следующей командой.
+- Только для AI: отдельная установка Codex CLI в PATH и авторизация `codex login`. Для запуска остальных функций аккаунт не нужен.
+
+## Сборка и запуск на Windows
+
+Из корня репозитория:
+
+```powershell
+pwsh -File scripts/build.ps1
+pwsh -File src/JobFlow.Api/bin/Debug/net10.0/playwright.ps1 install chromium
+dotnet run --no-build --no-launch-profile --project src/JobFlow.Api
+```
+
+Во втором терминале:
+
+```powershell
+dotnet run --no-build --no-launch-profile --project src/JobFlow.Worker
+```
+
+Откройте **http://127.0.0.1:5271**. API обслуживает собранный frontend. Worker нужен для заданий; закрытие вкладки не останавливает Worker. Закрытие его терминала останавливает процесс. Установка системной службы пока не автоматизирована.
+
+Для hot reload frontend:
+
+```powershell
+cd src/JobFlow.Web
+npm start -- --host 127.0.0.1 --proxy-config proxy.conf.json
+```
+
+## Данные и конфигурация
+
+По умолчанию данные находятся в каталоге `JobFlow` внутри системного LocalApplicationData. В Windows обычно это `%LOCALAPPDATA%/JobFlow`. Переопределить общий путь **одинаково для API и Worker**:
+
+```powershell
+$env:JOBFLOW_DATA_DIR = 'D:/JobFlowData'
+```
+
+Каталоги: `jobflow.db`, `resumes/`, `browser-profiles/`, `agent-work/`. Временные файлы AI удаляются после выполнения. Журналы процессов выводятся в stdout в JSON. Конфигурации агентов и их снимки хранятся в БД; вход и ответ AI по умолчанию не сохраняются. Не помещайте секреты в промпты.
+
+`JOBFLOW_CODEX_PATH` позволяет задать путь к исполняемому файлу Codex. Модель не зашита в код: укажите доступный ID в UI или оставьте пустым для выбора CLI. Reasoning должен поддерживаться выбранной моделью.
+
+Codex запускается с игнорированием пользовательского config.toml, ephemeral-сессией, read-only sandbox и отключёнными shell/apps/browser/computer/multi-agent/hooks/image tools. Это не замена изоляции ОС. Для чувствительных данных используйте отдельную учётную запись ОС. Контроль стоимости и настраиваемые tool permissions ещё не реализованы.
+
+## Первая настройка
+
+1. Создайте профиль и заполните подтверждённый опыт.
+2. Выберите профиль вверху и загрузите PDF.
+3. Добавьте площадку. `search-only` поддерживает ручной импорт; `test-form` извлекает только встроенную искусственную вакансию и не посещает указанный URL.
+4. Добавьте Codex-провайдера. Включайте его только если разрешаете передачу данных выбранному AI.
+5. Создайте агента, укажите профиль/провайдера, промпт и JSON Schema. Подстановка входа: `{{input}}`.
+6. Включите провайдера и агента, затем выполните проверку или ручной запуск.
+7. Создайте задание. Ручной запуск только ставит его в очередь; результат смотрите в «Запуски заданий».
+
+Подготовка отклика не доказывает отправку. Переходы в Submitted через ручной API запрещены. Изолированный dry-run никогда не создаёт реальный отклик.
+
+## Проверки
+
+```powershell
+dotnet test
+dotnet run --project tests/JobFlow.Smoke
+# Отдельная проверка реально настроенного Codex; может расходовать квоту:
+dotnet run --project tests/JobFlow.Smoke -- --codex
+```
+
+Smoke требует предварительной сборки frontend, свободного порта 5271 и Chromium. Он запускает API/Worker с отдельной искусственной БД в игнорируемом `data/`, закрывает процессы и сохраняет снимки в игнорируемом `.impeccable/review/`. Боевые данные не используются.
+
+## Переносимость
+
+Скрипт `sh scripts/build.sh` предназначен для Linux. Нужны зависимости Chromium и `pwsh .../playwright.ps1 install --with-deps chromium`. Linux-запуск пока **не проверен**. Подробности: [docs/MIGRATION.md](docs/MIGRATION.md).
+
+## Лицензия
+
+MIT: подходит для частного self-hosting, модификаций и распространения с сохранением уведомления. Репозиторий локальный; публикация на GitHub не выполнялась.
