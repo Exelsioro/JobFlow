@@ -15,6 +15,10 @@ builder.Services.AddDbContext<JobFlowDb>(x => x.UseSqlite(Storage.ConnectionStri
 builder.Services.AddScoped<IModelProvider, CodexCliProvider>();
 builder.Services.AddScoped<IAgentExecutor, AgentExecutor>();
 builder.Services.AddScoped<JobSearchWorkflow>();
+builder.Services.AddSingleton<SecretStore>();
+builder.Services.AddScoped<McpGateway>();
+builder.Services.AddScoped<JournalService>();
+builder.Services.AddHttpClient<RemoteIntegrationService>().ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<IJobSearchWorkflow>(sp => sp.GetRequiredService<JobSearchWorkflow>());
 builder.Services.AddSingleton<BrowserSessions>();
 builder.Services.AddProblemDetails();
@@ -174,6 +178,7 @@ app.MapPost("/api/applications", async (JobApplication input, JobFlowDb db) =>
     if (!await (from v in db.ResumeVersions join r in db.Resumes on v.ResumeId equals r.Id
         where v.Id == input.ResumeVersionId && r.CandidateProfileId == input.CandidateProfileId select v).AnyAsync())
         throw new ArgumentException("Resume version must belong to the selected profile.");
+    if(await db.Set<HistoricalApplication>().AnyAsync(x=>x.CandidateProfileId==input.CandidateProfileId&&x.VacancyId==input.VacancyId))throw new ArgumentException("Imported application history exists; do not apply again.");
     input.Id = Guid.NewGuid(); input.State = ApplicationState.Discovered; input.Revision = 0;
     db.Add(input); Audit(db, input, "Created"); await db.SaveChangesAsync(); return Results.Ok(input);
 });
@@ -185,6 +190,7 @@ app.MapPost("/api/applications/{id:guid}/transition", async (Guid id, Transition
         throw new ArgumentException("This transition requires verified adapter evidence. Real submission is disabled.");
     if (input.State == ApplicationState.ReadyToSubmit && string.IsNullOrWhiteSpace(row.CoverLetter)) throw new ArgumentException("Prepare a cover letter before review approval.");
     if (input.State == ApplicationState.ReadyToSubmit && await db.Set<Integration>().AnyAsync(x => x.CandidateProfileId == row.CandidateProfileId && !x.ImportConfirmed)) throw new ArgumentException("Confirm the existing journal import before approval.");
+    if(input.State==ApplicationState.ReadyToSubmit && await db.Set<HistoricalApplication>().AnyAsync(x=>x.CandidateProfileId==row.CandidateProfileId&&x.VacancyId==row.VacancyId))throw new ArgumentException("Imported application history blocks resubmission.");
     var previous = row.State; Workflow.Transition(row, input.State);
     Audit(db, row, "StateChanged", $"{previous} -> {row.State}"); await db.SaveChangesAsync(); return Results.Ok(row);
 });
@@ -244,13 +250,9 @@ app.MapDelete("/api/browser-profiles/{id:guid}", async (Guid id, bool confirm, J
 });
 app.MapGet("/api/export/vacancies.csv", async (JobFlowDb db, CancellationToken ct) =>
     Results.File(System.Text.Encoding.UTF8.GetBytes(await new CsvJournal().ExportAsync(await db.Vacancies.AsNoTracking().ToListAsync(ct), ct)), "text/csv", "vacancies.csv"));
-app.MapGet("/api/integrations", () => new[] {
-    new { name = "CSV", status = "Export available", detail = "Download vacancies from the local database." },
-    new { name = "Google Sheets", status = "Not implemented", detail = "No account connected." },
-    new { name = "Gmail", status = "Not implemented", detail = "No email access." },
-    new { name = "MCP", status = "Not implemented", detail = "Client and tool permissions pending." }
-});
+app.MapIntegrationEndpoints();
 app.MapWorkflowEndpoints();
+app.MapMcpEndpoints();
 app.MapFallbackToFile("index.html");
 await app.RunAsync();
 static void Required(string value, string field) { if (string.IsNullOrWhiteSpace(value) || value.Length > 500) throw new ArgumentException($"{field} is required (max 500 characters)."); }

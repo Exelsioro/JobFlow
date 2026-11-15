@@ -102,6 +102,7 @@ public class ModelProvider : Entity
 }
 public class AgentProfile : Entity
 {
+    public string ToolBindingsJson { get; set; } = "[]";
     public Guid CandidateProfileId { get; set; }
     public Guid ModelProviderId { get; set; }
     public string Name { get; set; } = "";
@@ -127,6 +128,7 @@ public class AgentExecution : Entity
 }
 public class ToolConnection : Entity
 {
+    public bool Enabled { get; set; } public string ToolsJson { get; set; } = "[]"; public string Status { get; set; } = "NotChecked"; public DateTime? LastCheckedAt { get; set; }
     public string Name { get; set; } = "";
     public string Transport { get; set; } = "stdio";
     public string EndpointOrCommand { get; set; } = "";
@@ -157,6 +159,7 @@ public class TaskRun : Entity
 }
 public class Integration : Entity
 {
+    public Guid? JobPlatformId { get; set; } public string MappingJson { get; set; } = "{\"externalId\":\"Id\",\"title\":\"Title\"}"; public string ConflictPolicy { get; set; } = "keep-local"; public string LastStatus { get; set; } = "NotChecked"; public DateTime? LastCheckedAt { get; set; } public string Endpoint { get; set; } = ""; public bool Enabled { get; set; }
     public Guid CandidateProfileId { get; set; }
     public string Name { get; set; } = "";
     public string Kind { get; set; } = "csv";

@@ -31,6 +31,15 @@ public class JobFlowDb(DbContextOptions<JobFlowDb> options) : DbContext(options)
         b.Entity<ScheduledTask>().HasOne<WorkflowDefinition>().WithMany().HasForeignKey(x => x.WorkflowDefinitionId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<ScheduledTask>().HasIndex(x => x.WorkflowDefinitionId).IsUnique();
         b.Entity<JobApplication>().HasOne<WorkflowDefinition>().WithMany().HasForeignKey(x => x.WorkflowDefinitionId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Integration>().HasOne<JobPlatform>().WithMany().HasForeignKey(x=>x.JobPlatformId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<JournalImport>().HasOne<Integration>().WithMany().HasForeignKey(x=>x.IntegrationId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<HistoricalApplication>().HasOne<Integration>().WithMany().HasForeignKey(x=>x.IntegrationId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<HistoricalApplication>().HasOne<CandidateProfile>().WithMany().HasForeignKey(x=>x.CandidateProfileId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<HistoricalApplication>().HasOne<Vacancy>().WithMany().HasForeignKey(x=>x.VacancyId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<HistoricalApplication>().HasIndex(x=>new{x.CandidateProfileId,x.VacancyId}).IsUnique();
+        b.Entity<FeedbackEvent>().HasOne<Integration>().WithMany().HasForeignKey(x=>x.IntegrationId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<FeedbackEvent>().HasOne<CandidateProfile>().WithMany().HasForeignKey(x=>x.CandidateProfileId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<FeedbackEvent>().HasIndex(x=>new{x.IntegrationId,x.SourceEventId}).IsUnique();
         b.Entity<CandidateProfile>().HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<Resume>().HasOne<CandidateProfile>().WithMany().HasForeignKey(x => x.CandidateProfileId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<ResumeVersion>().HasOne<Resume>().WithMany().HasForeignKey(x => x.ResumeId).OnDelete(DeleteBehavior.Restrict);

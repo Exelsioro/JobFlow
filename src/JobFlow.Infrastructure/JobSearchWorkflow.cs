@@ -40,6 +40,7 @@ public sealed class JobSearchWorkflow(JobFlowDb db, IAgentExecutor agents) : IJo
             foreach (var vacancy in vacancies)
             {
                 ct.ThrowIfCancellationRequested();
+                if(await db.Set<HistoricalApplication>().AnyAsync(x=>x.CandidateProfileId==profile.Id&&x.VacancyId==vacancy.Id,ct))continue;
                 var application = await db.Applications.SingleOrDefaultAsync(x => x.CandidateProfileId == profile.Id && x.VacancyId == vacancy.Id, ct);
                 if (application != null && (application.WorkflowDefinitionId != definitionId ||
                     application.State is not (ApplicationState.Discovered or ApplicationState.Evaluating or ApplicationState.Drafting or ApplicationState.Blocked))) continue;

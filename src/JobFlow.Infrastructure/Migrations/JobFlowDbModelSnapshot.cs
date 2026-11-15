@@ -105,6 +105,10 @@ namespace JobFlow.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ToolBindingsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("UserPromptTemplate")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -298,7 +302,50 @@ namespace JobFlow.Infrastructure.Migrations
                     b.ToTable("EmployerInteraction");
                 });
 
-            modelBuilder.Entity("JobFlow.Domain.Integration", b =>
+            modelBuilder.Entity("JobFlow.Domain.FeedbackEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CandidateProfileId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("IntegrationId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("NeedsAction")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceEventId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CandidateProfileId");
+
+                    b.HasIndex("IntegrationId", "SourceEventId")
+                        .IsUnique();
+
+                    b.ToTable("FeedbackEvent");
+                });
+
+            modelBuilder.Entity("JobFlow.Domain.HistoricalApplication", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -310,10 +357,73 @@ namespace JobFlow.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("IntegrationId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceKey")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceState")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("VacancyId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IntegrationId");
+
+                    b.HasIndex("VacancyId");
+
+                    b.HasIndex("CandidateProfileId", "VacancyId")
+                        .IsUnique();
+
+                    b.ToTable("HistoricalApplication");
+                });
+
+            modelBuilder.Entity("JobFlow.Domain.Integration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CandidateProfileId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConflictPolicy")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("ImportConfirmed")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid?>("JobPlatformId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastCheckedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastStatus")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MappingJson")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -324,6 +434,8 @@ namespace JobFlow.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CandidateProfileId");
+
+                    b.HasIndex("JobPlatformId");
 
                     b.ToTable("Integration");
                 });
@@ -406,6 +518,52 @@ namespace JobFlow.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Platforms");
+                });
+
+            modelBuilder.Entity("JobFlow.Domain.JournalImport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Added")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("CommittedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Conflicts")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Duplicates")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("IntegrationId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("RowCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RowsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IntegrationId");
+
+                    b.ToTable("JournalImport");
                 });
 
             modelBuilder.Entity("JobFlow.Domain.ModelProvider", b =>
@@ -636,8 +794,14 @@ namespace JobFlow.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("EndpointOrCommand")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastCheckedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
@@ -645,6 +809,14 @@ namespace JobFlow.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("PermissionsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ToolsJson")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -923,6 +1095,42 @@ namespace JobFlow.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("JobFlow.Domain.FeedbackEvent", b =>
+                {
+                    b.HasOne("JobFlow.Domain.CandidateProfile", null)
+                        .WithMany()
+                        .HasForeignKey("CandidateProfileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("JobFlow.Domain.Integration", null)
+                        .WithMany()
+                        .HasForeignKey("IntegrationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("JobFlow.Domain.HistoricalApplication", b =>
+                {
+                    b.HasOne("JobFlow.Domain.CandidateProfile", null)
+                        .WithMany()
+                        .HasForeignKey("CandidateProfileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("JobFlow.Domain.Integration", null)
+                        .WithMany()
+                        .HasForeignKey("IntegrationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("JobFlow.Domain.Vacancy", null)
+                        .WithMany()
+                        .HasForeignKey("VacancyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("JobFlow.Domain.Integration", b =>
                 {
                     b.HasOne("JobFlow.Domain.CandidateProfile", null)
@@ -930,6 +1138,11 @@ namespace JobFlow.Infrastructure.Migrations
                         .HasForeignKey("CandidateProfileId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("JobFlow.Domain.JobPlatform", null)
+                        .WithMany()
+                        .HasForeignKey("JobPlatformId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("JobFlow.Domain.JobApplication", b =>
@@ -956,6 +1169,15 @@ namespace JobFlow.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("WorkflowDefinitionId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("JobFlow.Domain.JournalImport", b =>
+                {
+                    b.HasOne("JobFlow.Domain.Integration", null)
+                        .WithMany()
+                        .HasForeignKey("IntegrationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("JobFlow.Domain.PlatformAccount", b =>

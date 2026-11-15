@@ -9,6 +9,11 @@ export class App implements OnInit {
   section=signal('dashboard'); data=signal<Record<string,Row[]>>({}); status=signal<Row>({});
   loading=signal(false); saving=signal(false); error=signal(''); message=signal(''); result=signal(''); editing=signal(false); query=signal('');
   private selectedProfile=signal(''); get profileId(){return this.selectedProfile();} set profileId(value:string){this.selectedProfile.set(value);this.resumeId='';this.activeAgent=null;this.draftApplication=null;this.editing.set(false);} draft:Row={}; file:File|null=null; resumeId=''; agentInput=''; activeAgent:Row|null=null;
+  importIntegration:Row|null=null; csvText='';
+  async selectCsv(event:Event){const file=(event.target as HTMLInputElement).files?.[0];if(file){if(file.size>5242880){this.error.set('Максимум 5 МБ.');return;}this.csvText=await file.text();}}
+  async previewImport(){if(this.importIntegration)await this.command('integrations/'+this.importIntegration['id']+'/preview',{csv:this.csvText});}
+  secretConnection:Row|null=null; secretJson='{}';
+  async saveSecrets(){if(!this.secretConnection)return;await this.action(async()=>{await this.api((this.secretConnection!['kind']?'integrations/':'mcp/')+this.secretConnection!['id']+'/secrets','POST',JSON.parse(this.secretJson));this.secretJson='{}';this.secretConnection=null;this.message.set('Секреты сохранены отдельно от конфигурации.');});}
   draftApplication:Row|null=null; draftLetter='';
   async editLetter(row:Row){this.draftApplication={...row};this.draftLetter=row['coverLetter'];}
   async saveLetter(){if(!this.draftApplication)return;await this.action(async()=>{await this.api('applications/'+this.draftApplication!['id']+'/draft','PUT',{letter:this.draftLetter,revision:this.draftApplication!['revision']});this.draftApplication=null;this.message.set('Черновик сохранён.');});}
@@ -49,17 +54,30 @@ export class App implements OnInit {
       {key:'description',label:'Описание'},{key:'model',label:'Модель (пусто — модель провайдера)'},
       {key:'reasoning',label:'Reasoning',type:'select',options:['','minimal','low','medium','high','xhigh']},
       {key:'systemPrompt',label:'Системная инструкция',type:'textarea'},{key:'userPromptTemplate',label:'Шаблон запроса с {{input}}',type:'textarea'},
-      {key:'outputSchema',label:'JSON Schema результата',type:'textarea',required:true},{key:'enabled',label:'Разрешить запуск агента',type:'checkbox'}]},
+      {key:'toolBindingsJson',label:'MCP-вызовы перед AI: массив {connectionId, toolName, arguments}',type:'textarea'},{key:'outputSchema',label:'JSON Schema результата',type:'textarea',required:true},{key:'enabled',label:'Разрешить запуск агента',type:'checkbox'}]},
     {key:'providers',title:'AI-провайдеры',description:'Codex CLI должен быть установлен и авторизован отдельно. Другие провайдеры пока не реализованы.',columns:['name','kind','model','enabled'],fields:[
       {key:'name',label:'Название',required:true},{key:'kind',label:'Тип',type:'select',options:['codex-cli']},{key:'model',label:'ID модели (пусто — выбор Codex CLI)'},
       {key:'timeoutSeconds',label:'Тайм-аут в секундах, 5–900',type:'number',required:true},{key:'enabled',label:'Разрешить отправку данных AI-провайдеру',type:'checkbox'}]},
-    {key:'mcp',title:'MCP-подключения',description:'MCP-клиент и разграничение разрешений ещё не реализованы.'},
+    {key:'mcp',title:'MCP-подключения',description:'Доверенные stdio/HTTP серверы. Автоматические вызовы — только read-only инструменты из явного списка разрешений.',columns:['name','transport','status','enabled','hasSecrets'],fields:[
+ {key:'name',label:'Название',required:true},{key:'transport',label:'Транспорт',type:'select',options:['stdio','http']},
+ {key:'endpointOrCommand',label:'Исполняемый файл или HTTPS endpoint',required:true},{key:'argumentsJson',label:'Аргументы запуска, JSON-массив',type:'textarea',required:true},
+ {key:'permissionsJson',label:'Разрешённые read-only инструменты, JSON-массив имён',type:'textarea',required:true},
+ {key:'enabled',label:'Разрешить подключение к этому серверу',type:'checkbox'}]},
     {key:'browser-profiles',title:'Браузерные профили',description:'Отдельные профили Playwright для ручной авторизации. Cookies хранятся локально.',columns:['name','busy'],fields:[{key:'name',label:'Название',required:true}]},
     {key:'tasks',title:'Планировщик',description:'Задания выполняет Worker независимо от браузера. Интервалы считаются в UTC.',columns:['name','kind','intervalMinutes','enabled','nextRunAt'],fields:[
       {key:'name',label:'Название',required:true},{key:'candidateProfileId',label:'Профиль',type:'select',source:'profiles',required:true},
       {key:'kind',label:'Действие',type:'select',options:['HealthCheck','BrowserDryRun']},{key:'intervalMinutes',label:'Интервал в минутах',type:'number',required:true},
       {key:'timeZone',label:'Часовой пояс IANA',required:true},{key:'enabled',label:'Включить расписание',type:'checkbox'}]},
-    {key:'integrations',title:'Интеграции',description:'База JobFlow — основной источник данных.',columns:['name','status','detail']},
+    {key:'integrations',title:'Интеграции',description:'CSV и Google Sheets: импорт после подтверждения. Gmail и JSON: чтение событий без отправки ответов.',columns:['name','kind','lastStatus','importConfirmed','enabled'],fields:[
+ {key:'name',label:'Название',required:true},{key:'candidateProfileId',label:'Профиль',type:'select',source:'profiles',required:true},
+ {key:'kind',label:'Источник',type:'select',options:['csv','google-sheets','gmail','feedback-json']},
+ {key:'jobPlatformId',label:'Площадка журнала (CSV/Sheets)',type:'select',source:'platforms'},
+ {key:'endpoint',label:'API endpoint (для сетевого источника)'},{key:'mappingJson',label:'JSON-сопоставление: externalId, title, employer, url, description, applicationState → заголовки столбцов',type:'textarea'},
+ {key:'conflictPolicy',label:'Конфликты вакансий',type:'select',options:['keep-local','update-vacancies']},
+ {key:'enabled',label:'Разрешить чтение внешнего источника',type:'checkbox'}]},
+ {key:'imports',title:'Импорт журналов',description:'Проверьте строки перед подтверждением. Исторические отклики блокируют повторные заявки.',columns:['integrationId','status','rowCount','added','duplicates','conflicts','createdAt']},
+ {key:'imported-applications',title:'История из журналов',description:'Подтверждённый импорт исторических заявок. Эти вакансии исключаются из новых откликов.',columns:['candidateProfileId','vacancyId','sourceState','sourceKey']},
+ {key:'feedback',title:'Обратная связь',description:'Сообщения из настроенных источников. Ответы автоматически не отправляются.',columns:['subject','receivedAt','needsAction']},
     {key:'runs',title:'Запуски заданий',description:'История работы фонового процесса.',columns:['scheduledTaskId','status','message','createdAt','finishedAt']},
     {key:'executions',title:'Запуски агентов',description:'Модель и версия конфигурации. Вход и выход по умолчанию не сохраняются.',columns:['agentProfileId','configurationVersion','model','status','error','createdAt']},
     {key:'logs',title:'Журнал событий',description:'История изменений рабочего пространства.',columns:['entityType','action','entityId','createdAt']}
@@ -87,7 +105,7 @@ export class App implements OnInit {
     this.data.set(Object.fromEntries(entries));this.status.set(await this.api('status'));
     if(!this.profileId&&this.data()['profiles']?.length)this.profileId=this.data()['profiles'][0]['id'];
   }catch(e){this.error.set((e as Error).message);}finally{this.loading.set(false);}}
-  create(){this.draft={rulesJson:'{}',candidateProfileId:this.profileId,adapter:'search-only',kind:this.section()==='tasks'?'HealthCheck':'codex-cli',timeoutSeconds:120,
+  create(){this.draft={mappingJson:'{"externalId":"Id","title":"Title","employer":"Employer","url":"Url","description":"Description","applicationState":"Status"}',conflictPolicy:'keep-local',transport:'stdio',argumentsJson:'[]',permissionsJson:'[]',toolBindingsJson:'[]',rulesJson:'{}',candidateProfileId:this.profileId,adapter:'search-only',kind:this.section()==='tasks'?'HealthCheck':this.section()==='integrations'?'csv':'codex-cli',timeoutSeconds:120,
     intervalMinutes:60,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone,enabled:false,taskType:'Evaluation',userPromptTemplate:'{{input}}',
     systemPrompt:'Use only verified candidate facts. Clearly identify uncertainty.',
     outputSchema:'{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"],"additionalProperties":false}'};this.editing.set(true);this.error.set('');}
@@ -96,7 +114,7 @@ export class App implements OnInit {
   options(field:Field){let list=field.source?this.data()[field.source]??[]:[];if(field.source==='resumes')list=list.filter(x=>x['candidateProfileId']===this.draft['candidateProfileId']);return list;}
   optionId(field:Field,row:Row){return field.source==='resumes'?row['versionId']:row['id'];}
   optionName(row:Row){return(row['name']??row['title']??row['id'])+(row['version']?' · v'+row['version']:'');}
-  async save(){await this.action(async()=>{for(const key of ['evaluationAgentId','letterAgentId'])if(this.draft[key]==='')this.draft[key]=null;await this.api(this.section()+(this.draft['id']?'/'+this.draft['id']:''),this.draft['id']?'PUT':'POST',this.draft);this.editing.set(false);this.message.set('Сохранено.');});}
+  async save(){await this.action(async()=>{for(const key of ['evaluationAgentId','letterAgentId','jobPlatformId'])if(this.draft[key]==='')this.draft[key]=null;await this.api(this.section()+(this.draft['id']?'/'+this.draft['id']:''),this.draft['id']?'PUT':'POST',this.draft);this.editing.set(false);this.message.set('Сохранено.');});}
   chooseFile(event:Event){this.file=(event.target as HTMLInputElement).files?.[0]??null;}
   uniqueResumes(){return [...new Map((this.data()['resumes']??[]).filter(x=>x['candidateProfileId']===this.profileId).map(x=>[x['id'],x])).values()];}
   async upload(){if(!this.file||!this.profileId){this.error.set('Выберите профиль и PDF.');return;}await this.action(async()=>{
