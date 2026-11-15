@@ -141,6 +141,7 @@ public class ScheduledTask : Entity
     public string TimeZone { get; set; } = "UTC";
     public bool Enabled { get; set; }
     public DateTime NextRunAt { get; set; } = DateTime.UtcNow;
+    public bool RunRequested { get; set; }
     public DateTime? LeaseUntil { get; set; }
     public string? LeaseToken { get; set; }
 }

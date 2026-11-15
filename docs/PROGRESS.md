@@ -1,7 +1,7 @@
-# Domain and persistence checkpoint
+# Progress checkpoint
 
-Implemented: modular .NET solution, domain entities, SQLite migration, application state machine, unique application/vacancy keys and optimistic revision field.
+Core API, independent worker, Codex CLI provider, Playwright dry-run and Angular UI implemented. Real Codex CLI synthetic structured-output check passed. Browser UI smoke passed: profile creation, reload persistence, desktop/mobile render, independent Worker execution.
 
-Verified: build succeeded with zero warnings; 7 unit tests and 1 SQLite integration test passed. No template placeholder tests remain.
+Current hardening adds profile filtering, history navigation, honest queue status and browser failure fixtures. Final validation and full remaining-work checklist follow in this document.
 
-In progress: API, worker, Angular, AI and browser adapters. MVP is not complete.
+MVP is NOT complete: MCP, email/Sheets sync, complete evaluation/workflow orchestration, real platform adapters, advanced scheduling and full privacy controls remain.

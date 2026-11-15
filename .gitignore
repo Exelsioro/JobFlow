@@ -16,3 +16,6 @@ browser-profiles/
 *.pdf
 *.user
 TestResults/
+
+src/JobFlow.Api/wwwroot/
+.impeccable/review/

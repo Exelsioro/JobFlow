@@ -110,6 +110,7 @@ namespace JobFlow.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<int>("Version")
+                        .IsConcurrencyToken()
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
@@ -566,6 +567,9 @@ namespace JobFlow.Infrastructure.Migrations
 
                     b.Property<DateTime>("NextRunAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("RunRequested")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("TimeZone")
                         .IsRequired()

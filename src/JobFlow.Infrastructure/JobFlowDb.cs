@@ -36,6 +36,7 @@ public class JobFlowDb(DbContextOptions<JobFlowDb> options) : DbContext(options)
         b.Entity<ApplicationAttempt>().HasIndex(x => x.IdempotencyKey).IsUnique();
         b.Entity<EmployerInteraction>().HasOne<JobApplication>().WithMany().HasForeignKey(x => x.JobApplicationId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<EmployerInteraction>().HasIndex(x => new { x.JobApplicationId, x.SourceEventId }).IsUnique();
+        b.Entity<AgentProfile>().Property(x => x.Version).IsConcurrencyToken();
         b.Entity<AgentProfile>().HasOne<CandidateProfile>().WithMany().HasForeignKey(x => x.CandidateProfileId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<AgentProfile>().HasOne<ModelProvider>().WithMany().HasForeignKey(x => x.ModelProviderId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<AgentExecution>().HasOne<AgentProfile>().WithMany().HasForeignKey(x => x.AgentProfileId).OnDelete(DeleteBehavior.Restrict);
