@@ -8,6 +8,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/JobFlow.IntegrationTests/JobFlow.IntegrationTests.csproj" />
+    <Project Path="tests/JobFlow.Smoke/JobFlow.Smoke.csproj" />
     <Project Path="tests/JobFlow.UnitTests/JobFlow.UnitTests.csproj" />
   </Folder>
 </Solution>

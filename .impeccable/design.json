@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-15T13:01:00Z",
+  "title": "Design System: JobFlow",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Workbench green"
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Warm pale canvas"
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Deep green ink"
+      }
+    },
+    "typographyMeta": {
+      "body": {
+        "displayName": "Body",
+        "purpose": "Forms, explanatory copy and general controls."
+      },
+      "heading": {
+        "displayName": "Page heading",
+        "purpose": "Current section title; reduces on mobile."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "button-hover",
+        "value": "background .16s ease-out",
+        "purpose": "Only when prefers-reduced-motion is no-preference."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact-desktop",
+        "value": "1100px"
+      },
+      {
+        "name": "mobile",
+        "value": "760px"
+      }
+    ],
+    "focus": {
+      "outline": "3px solid #b27b22",
+      "outlineOffset": "3px"
+    },
+    "browserSurfaces": {
+      "selectionBackground": "#d4e8db",
+      "caret": "var(--accent)",
+      "scrollbar": " #a3b4a8 var(--canvas)"
+    }
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main action, with disabled and keyboard states.",
+      "html": "<button class=\"ds-primary\">Сохранить</button>",
+      "css": ".ds-primary{font:600 16px \"Segoe UI\",sans-serif;min-height:44px;padding:9px 16px;border:1px solid transparent;border-radius:5px;background:var(--accent,#225e47);color:white;cursor:pointer}.ds-primary:hover{background:#164932}.ds-primary:focus-visible{outline:3px solid #b27b22;outline-offset:3px}.ds-primary:disabled{opacity:.55;cursor:not-allowed}"
+    },
+    {
+      "name": "Secondary button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Supporting action without primary emphasis.",
+      "html": "<button class=\"ds-secondary\">Обновить</button>",
+      "css": ".ds-secondary{font:600 16px \"Segoe UI\",sans-serif;min-height:44px;padding:9px 16px;border:1px solid var(--line,#d6dfd8);border-radius:5px;background:white;color:var(--ink,#172923);cursor:pointer}.ds-secondary:hover{background:#edf1eb}.ds-secondary:focus-visible{outline:3px solid #b27b22;outline-offset:3px}"
+    },
+    {
+      "name": "Row action",
+      "kind": "button",
+      "description": "Compact action within a record table.",
+      "html": "<button class=\"ds-row-action\">Изменить</button>",
+      "css": ".ds-row-action{font:600 16px \"Segoe UI\",sans-serif;min-height:44px;padding:8px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--accent,#225e47);cursor:pointer}.ds-row-action:hover{background:#e8efe9}.ds-row-action:focus-visible{outline:3px solid #b27b22;outline-offset:3px}"
+    },
+    {
+      "name": "Labelled input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Persistent label and native text input.",
+      "html": "<label class=\"ds-field\">Название профиля<input class=\"ds-input\" value=\"\"/></label>",
+      "css": ".ds-field{display:flex;flex-direction:column;gap:7px;font:600 14px \"Segoe UI\",sans-serif;color:var(--ink,#172923)}.ds-input{font:16px \"Segoe UI\",sans-serif;min-height:44px;padding:10px 12px;border:1px solid #9baa9f;border-radius:5px;background:white;color:var(--ink,#172923);caret-color:var(--accent,#225e47)}.ds-input:focus-visible{outline:3px solid #b27b22;outline-offset:3px}"
+    },
+    {
+      "name": "Navigation item",
+      "kind": "nav",
+      "description": "Selected section in the local workspace.",
+      "html": "<button class=\"ds-nav\" aria-current=\"page\">Профили кандидата</button>",
+      "css": ".ds-nav{font:700 14px \"Segoe UI\",sans-serif;min-height:40px;padding:8px 12px;border:1px solid transparent;border-radius:5px;text-align:left;background:#d5e3d4;color:#173e28;cursor:pointer}.ds-nav:hover{background:#dfe8dc}.ds-nav:focus-visible{outline:3px solid #b27b22;outline-offset:3px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Local workbench",
+    "overview": "Operate mode: readable records, inline editing and explicit feedback. The interface uses a quiet green and neutral palette for a daytime desktop workspace, adapting the same controls to mobile web. This records the implemented design, not a claim that the complete product is finished.",
+    "keyCharacteristics": [
+      "Tables carry records; forms carry configuration.",
+      "Primary actions remain distinct from secondary and row actions.",
+      "Empty and unsupported states explain the available next step."
+    ],
+    "rules": [
+      {
+        "name": "The Status Truth Rule",
+        "body": "Success styling confirms the operation actually completed; queued work must remain described as queued. Unsupported features are labelled explicitly.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "Do use API-backed records and counts.",
+      "Do keep unsupported capabilities explicit.",
+      "Do retain visible keyboard focus and labelled native controls.",
+      "Do scope profile-owned records to the selected working profile."
+    ],
+    "donts": [
+      "Don't present queued work as completed.",
+      "Don't add fabricated users, testimonials or decorative records.",
+      "Don't require remote fonts or trackers for the local interface."
+    ]
+  }
+}

@@ -1,0 +1,58 @@
+<div class="workspace"><aside>
+<a class="brand" href="#dashboard" (click)="navigate('dashboard')"><span class="brand-mark">J</span>JobFlow</a>
+<p class="workspace-label">Локальное пространство</p>
+<nav aria-label="Разделы">@for(item of sections;track item.key){<button type="button" [class.active]="section()===item.key" [attr.aria-current]="section()===item.key?'page':null" (click)="navigate(item.key)">{{item.title}}</button>}</nav>
+<div class="sidebar-note">Данные под вашим контролем<br><strong>Реальная отправка выключена</strong></div></aside>
+<main><header class="topbar"><label class="profile-picker">Рабочий профиль<select [(ngModel)]="profileId"><option value="">Выберите профиль</option>@for(p of data()['profiles']??[];track p['id']){<option [value]="p['id']">{{p['name']}}</option>}</select></label>
+<button class="secondary" (click)="refresh()" [disabled]="loading()">{{loading()?'Обновление…':'Обновить'}}</button></header>
+<div class="page"><div class="page-heading"><div><h1>{{current().title}}</h1><p>{{current().description}}</p></div>
+@if(current().fields&&!editing()){<button class="primary" (click)="create()">Создать</button>}</div>
+@if(error()){<div class="notice error" role="alert">{{error()}}</div>}@if(message()){<div class="notice success" role="status">{{message()}}</div>}
+@if(section()==='dashboard'){
+<section class="overview"><h2>{{status()['profiles']?'Рабочее пространство готово':'Начните с профиля кандидата'}}</h2><p>Добавьте опыт и правила поиска, загрузите резюме, затем настройте площадки и агентов. Каждый профиль ведётся отдельно.</p><button class="primary" (click)="navigate('profiles');create()">Создать профиль</button></section>
+<dl class="summary"><div><dt>Профили</dt><dd>{{status()['profiles']??0}}</dd></div><div><dt>Вакансии</dt><dd>{{status()['vacancies']??0}}</dd></div><div><dt>Отклики</dt><dd>{{status()['applications']??0}}</dd></div><div><dt>Задания</dt><dd>{{status()['tasks']??0}}</dd></div></dl>
+<section class="setup-list"><h2>Настройка рабочего процесса</h2>
+<button (click)="navigate('resumes')"><span><strong>Резюме и версии</strong><small>Загрузите PDF для конкретного профиля</small></span><span>Открыть →</span></button>
+<button (click)="navigate('providers')"><span><strong>AI-провайдер</strong><small>Настройте Codex CLI и разрешите вызовы</small></span><span>Настроить →</span></button>
+<button (click)="navigate('tasks')"><span><strong>Фоновые задания</strong><small>Выберите действие и интервал запуска</small></span><span>Настроить →</span></button></section>
+<section class="boundary"><h2>Безопасная проверка</h2><p>Playwright заполняет изолированную форму искусственными данными и проверяет квитанцию. Внешних откликов не отправляет.</p><button class="secondary" [disabled]="saving()" (click)="command('browser/dry-run')">{{saving()?'Выполняется…':'Запустить браузерный dry-run'}}</button></section>}
+@if(editing()){
+<form class="editor" (ngSubmit)="save()"><h2>{{draft['id']?'Редактирование':'Новая запись'}}</h2><div class="form-grid">
+@for(field of current().fields;track field.key){<label [class.wide]="field.type==='textarea'" [class.checkbox]="field.type==='checkbox'">
+@if(field.type!=='checkbox'){<span>{{field.label}}{{field.required?' *':''}}</span>}
+@switch(field.type){
+@case('textarea'){<textarea [name]="field.key" [(ngModel)]="draft[field.key]" [required]="!!field.required" rows="4"></textarea>}
+@case('select'){<select [name]="field.key" [(ngModel)]="draft[field.key]" [required]="!!field.required">
+@if(field.source){<option value="">Выберите…</option>@for(option of options(field);track option['versionId']||option['id']){<option [value]="optionId(field,option)">{{optionName(option)}}</option>}}
+@else{@for(option of field.options;track option){<option [value]="option">{{option||'По умолчанию'}}</option>}}</select>}
+@case('checkbox'){<input type="checkbox" [name]="field.key" [(ngModel)]="draft[field.key]"><span>{{field.label}}</span>}
+@default{<input [type]="field.type||'text'" [name]="field.key" [(ngModel)]="draft[field.key]" [required]="!!field.required">}
+}</label>}
+</div><div class="form-actions"><button type="submit" class="primary" [disabled]="saving()">{{saving()?'Сохранение…':'Сохранить'}}</button><button type="button" class="secondary" (click)="editing.set(false)">Отмена</button></div></form>}
+@if(section()==='resumes'){
+<form class="upload" (ngSubmit)="upload()"><h2>Загрузить PDF</h2><p>Используется профиль, выбранный вверху. Максимум — 10 МБ.</p>
+<label>Резюме<select name="resumeId" [(ngModel)]="resumeId"><option value="">Создать новое резюме</option>@for(r of uniqueResumes();track r['id']){@if(r['candidateProfileId']===profileId){<option [value]="r['id']">{{r['name']}} · новая версия</option>}}</select></label>
+<label>Файл<input type="file" accept=".pdf,application/pdf" (change)="chooseFile($event)" required></label><button class="primary" [disabled]="saving()||!file||!profileId">Загрузить версию</button></form>}
+@if(section()==='mcp'){<div class="empty"><h2>MCP-клиент ещё не подключён</h2><p>Транспорты, обнаружение инструментов и разрешения агентов входят в оставшуюся работу. Команды здесь не выполняются.</p></div>}
+@if(section()==='integrations'){<a class="button secondary" href="/api/export/vacancies.csv" download>Скачать вакансии в CSV</a>}
+@if(current().columns){
+<div class="list-heading"><h2>Записи <span class="count">{{rows().length}}</span></h2><label class="search"><span class="sr-only">Поиск записей</span><input type="search" placeholder="Поиск по записям" [ngModel]="query()" (ngModelChange)="query.set($event)"></label></div>
+@if(rows().length){<div class="table-wrap"><table><thead><tr>@for(col of current().columns;track col){<th>{{labels[col]||col}}</th>}<th><span class="sr-only">Действия</span></th></tr></thead><tbody>
+@for(row of rows();track row['versionId']||row['id']||row['name']){<tr>
+@for(col of current().columns;track col){<td [class.state]="col==='state'||col==='status'">{{display(col,row[col])}}</td>}
+<td class="actions">
+@if(['profiles','agents','providers'].includes(section())){<button class="text-button" (click)="edit(row)">Изменить</button>}
+@if(section()==='agents'){<button class="text-button" (click)="copy(row)">Копировать</button><button class="text-button" (click)="activeAgent=row;agentInput=''" [disabled]="!row['enabled']">Запустить</button>}
+@if(section()==='providers'){<button class="text-button" [disabled]="saving()||!row['enabled']" (click)="command('providers/'+row['id']+'/test')">Проверить</button>}
+@if(section()==='resumes'){<a [href]="'/api/resumes/versions/'+row['versionId']+'/download'">Скачать</a>}
+@if(section()==='platforms'&&row['adapter']==='test-form'){<button class="text-button" [disabled]="saving()" (click)="command('platforms/'+row['id']+'/discover')">Извлечь тестовую вакансию</button>}
+@if(section()==='vacancies'){<button class="text-button" [disabled]="saving()" (click)="evaluate(row)">Оценить</button>}
+@if(section()==='tasks'){<button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+'/run')">Запустить</button><button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+(row['enabled']?'/pause':'/resume'))">{{row['enabled']?'Пауза':'Включить'}}</button>}
+@if(section()==='browser-profiles'){<button class="text-button" [disabled]="saving()" (click)="command('browser-profiles/'+row['id']+(row['busy']?'/close':'/open'))">{{row['busy']?'Закрыть':'Авторизоваться'}}</button><button class="text-button danger" [disabled]="saving()||row['busy']" (click)="removeBrowser(row)">Удалить</button>}
+@if(section()==='applications'){@for(next of transitions(row);track next){<button class="text-button" [disabled]="saving()" (click)="command('applications/'+row['id']+'/transition',{state:next,revision:row['revision']})">{{next}}</button>}}
+</td></tr>}</tbody></table></div>}
+@else{<div class="empty"><h2>{{query()?'Совпадений нет':'Здесь пока нет записей'}}</h2><p>{{query()?'Попробуйте другой запрос.':'Данные появятся после настройки или первого запуска. Демонстрационные записи не добавляются автоматически.'}}</p></div>}}
+@if(activeAgent){<section class="editor"><h2>Запустить: {{activeAgent['name']}}</h2><p>Данные будут переданы провайдеру. Не включайте лишние персональные сведения.</p><label>Входные данные<textarea [(ngModel)]="agentInput" rows="5"></textarea></label><div class="form-actions"><button class="primary" (click)="execute()" [disabled]="saving()">{{saving()?'Выполняется…':'Передать данные и запустить'}}</button><button class="secondary" (click)="activeAgent=null">Закрыть</button></div></section>}
+@if(result()){<section class="result"><h2>Результат действия</h2><pre>{{result()}}</pre></section>}
+<footer>JobFlow · Локальный режим · Внешние подключения включаются пользователем</footer>
+</div></main></div>
