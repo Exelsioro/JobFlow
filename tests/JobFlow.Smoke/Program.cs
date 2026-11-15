@@ -124,6 +124,9 @@ try
     await page.GetByRole(AriaRole.Button,new(){Name="Попытки отправки",Exact=true}).ClickAsync();
     await page.GetByRole(AriaRole.Cell,new(){Name="TestConfirmed",Exact=true}).WaitForAsync();
     await page.ScreenshotAsync(new(){Path=Path.Combine(review,"workflow-submitted.png"),FullPage=true});
+    await page.GetByLabel("Рабочий профиль").SelectOptionAsync(other.GetProperty("id").GetString()!);
+    await page.GetByRole(AriaRole.Heading,new(){Name="Здесь пока нет записей",Exact=true}).WaitForAsync();
+    if(await page.GetByRole(AriaRole.Cell,new(){Name="TestConfirmed",Exact=true}).CountAsync()!=0)throw new InvalidOperationException("Attempt owner filter failed.");
     if(errors.Count>0)throw new InvalidOperationException(string.Join("\\n",errors));
     Console.WriteLine("PASS: UI profile, durable workflow, review editor, approval, isolated test submission, independent Worker, no JS errors.");
     Console.WriteLine("Screenshots: " + review);

@@ -56,7 +56,7 @@ app.UseStaticFiles();
 app.MapGet("/api/status", async (JobFlowDb db) => new {
     realSubmissionEnabled = false, profiles = await db.Profiles.CountAsync(), vacancies = await db.Vacancies.CountAsync(),
     applications = await db.Applications.CountAsync(), tasks = await db.Tasks.CountAsync(),
-    capabilities = new[] { "Profiles", "PDF resumes", "Manual vacancy import", "Codex CLI", "Isolated browser dry-run", "Interval scheduler", "CSV export" },
+    capabilities = new[] { "Profiles", "PDF resumes", "Manual vacancy import", "Codex CLI", "Isolated browser dry-run", "Interval scheduler", "CSV export", "Durable preparation workflow", "MCP stdio/HTTP read-only tools", "Confirmed CSV/Sheets import", "Gmail/JSON feedback", "Isolated idempotent test submission" },
     unavailable = new[] { "Real platform submission", "Google Sheets write-back", "BrowserAct" }
 });
 app.MapGet("/api/profiles", async (JobFlowDb db) => await db.Profiles.AsNoTracking().OrderBy(x => x.Name).ToListAsync());

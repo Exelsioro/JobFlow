@@ -52,6 +52,36 @@ public class WorkflowTests
         vacancy.Location = "Excluded";
         Assert.Equal("Reject", RuleEvaluator.Evaluate(profile, vacancy, new(Locations: ["Allowed"]), DateTime.UtcNow).Decision);
     }
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task WorkerStopsActiveWorkflowAndRecordsTimeoutOrCancellation(bool stop)
+    {
+        await using var fixture=await Setup.Create();
+        var db=fixture.Db;var provider=new ModelProvider{Enabled=true};
+        var evaluator=new AgentProfile{CandidateProfileId=fixture.Definition.CandidateProfileId,ModelProviderId=provider.Id,TaskType="Evaluation",Enabled=true};
+        fixture.Definition.EvaluationAgentId=evaluator.Id;
+        var task=new ScheduledTask{CandidateProfileId=fixture.Definition.CandidateProfileId,Kind="Workflow",WorkflowDefinitionId=fixture.Definition.Id,RunRequested=true,TimeoutSeconds=5,MaxRetries=0};
+        db.AddRange(provider,evaluator,task);await db.SaveChangesAsync();db.ChangeTracker.Clear();
+        var agent=new WaitingAgent();var running=new TaskProcessor(db,agent).RunOneAsync(default);
+        await agent.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        if(stop){
+            await using var control=new JobFlowDb(new DbContextOptionsBuilder<JobFlowDb>().UseSqlite(db.Database.GetConnectionString()).Options);
+            await control.Tasks.Where(x=>x.Id==task.Id).ExecuteUpdateAsync(s=>s.SetProperty(x=>x.CancelRequested,true).SetProperty(x=>x.Enabled,false));
+        }
+        Assert.True(await running.WaitAsync(TimeSpan.FromSeconds(10)));
+        db.ChangeTracker.Clear();
+        Assert.Equal(stop?"Cancelled":"Failed",(await db.Runs.SingleAsync()).Status);
+        Assert.False((await db.Tasks.SingleAsync()).RunRequested);
+        Assert.Equal(ApplicationState.Blocked,(await db.Applications.SingleAsync()).State);
+    }
+    private class WaitingAgent:IAgentExecutor
+    {
+        public TaskCompletionSource Started=new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task<AgentExecutionResult> ExecuteAsync(AgentExecutionRequest request,CancellationToken ct){
+            Started.SetResult();await Task.Delay(Timeout.Infinite,ct);throw new InvalidOperationException();
+        }
+    }
     private class FakeAgent(bool fail = false, Guid? evaluation = null) : IAgentExecutor
     {
         public int Calls;

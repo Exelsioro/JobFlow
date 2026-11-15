@@ -31,6 +31,22 @@ public static class IntegrationEndpoints
         app.MapGet("/api/imports",async(JobFlowDb db)=>await db.Set<JournalImport>().AsNoTracking().OrderByDescending(x=>x.CreatedAt).ToListAsync());
         app.MapPost("/api/imports/{id:guid}/confirm",async(Guid id,JournalService service,CancellationToken ct)=>Results.Ok(await service.ConfirmAsync(id,ct)));
         app.MapGet("/api/imported-applications",async(JobFlowDb db)=>await db.Set<HistoricalApplication>().AsNoTracking().ToListAsync());
+        app.MapGet("/api/interactions",async(JobFlowDb db)=>await db.Set<EmployerInteraction>().AsNoTracking().OrderByDescending(x=>x.CreatedAt).ToListAsync());
+        app.MapPost("/api/feedback/{id:guid}/link",async(Guid id,FeedbackLink input,JobFlowDb db,CancellationToken ct)=>{
+            var feedback=await db.Set<FeedbackEvent>().SingleAsync(x=>x.Id==id,ct);
+            var application=await db.Applications.SingleAsync(x=>x.Id==input.ApplicationId,ct);
+            if(application.CandidateProfileId!=feedback.CandidateProfileId)throw new ArgumentException("Feedback and application must belong to the same profile.");
+            var key="feedback:"+feedback.Id;
+            var existing=await db.Set<EmployerInteraction>().SingleOrDefaultAsync(x=>x.SourceEventId==key,ct);
+            if(existing!=null){
+                if(existing.JobApplicationId!=application.Id)throw new ArgumentException("Feedback is already linked to another application.");
+                return Results.Ok(existing);
+            }
+            if(application.State is not (ApplicationState.Submitted or ApplicationState.EmployerResponded))throw new ArgumentException("Only submitted applications can receive employer feedback.");
+            var interaction=new EmployerInteraction{JobApplicationId=application.Id,SourceEventId=key,Message=feedback.Subject+"\n"+feedback.Body};
+            if(application.State==ApplicationState.Submitted)JobFlow.Application.Workflow.Transition(application,ApplicationState.EmployerResponded);
+            db.Add(interaction);feedback.NeedsAction=false;await db.SaveChangesAsync(ct);return Results.Ok(interaction);
+        });
         app.MapGet("/api/feedback",async(JobFlowDb db)=>await db.Set<FeedbackEvent>().AsNoTracking().OrderByDescending(x=>x.ReceivedAt).Take(500).ToListAsync());
         app.MapPost("/api/feedback/{id:guid}/acknowledge",async(Guid id,JobFlowDb db,CancellationToken ct)=>{
             var row=await db.Set<FeedbackEvent>().SingleAsync(x=>x.Id==id,ct);row.NeedsAction=false;await db.SaveChangesAsync(ct);return Results.Ok(row);
@@ -49,6 +65,7 @@ public static class IntegrationEndpoints
         }
         if(input.Kind!="csv"&&!Uri.TryCreate(input.Endpoint,UriKind.Absolute,out _))throw new ArgumentException("Integration endpoint is required.");
     }
+    public record FeedbackLink(Guid ApplicationId);
     public record CsvInput(string Csv);
 }
 

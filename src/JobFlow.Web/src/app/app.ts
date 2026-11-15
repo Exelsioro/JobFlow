@@ -8,7 +8,10 @@ type Section = {key:string;title:string;description:string;columns?:string[];fie
 export class App implements OnInit {
   section=signal('dashboard'); data=signal<Record<string,Row[]>>({}); status=signal<Row>({});
   loading=signal(false); saving=signal(false); error=signal(''); message=signal(''); result=signal(''); editing=signal(false); query=signal('');
-  private selectedProfile=signal(''); get profileId(){return this.selectedProfile();} set profileId(value:string){this.selectedProfile.set(value);this.resumeId='';this.activeAgent=null;this.draftApplication=null;this.editing.set(false);} draft:Row={}; file:File|null=null; resumeId=''; agentInput=''; activeAgent:Row|null=null;
+  private selectedProfile=signal(''); get profileId(){return this.selectedProfile();} set profileId(value:string){this.selectedProfile.set(value);this.resumeId='';this.activeAgent=null;this.draftApplication=null;this.feedbackEvent=null;this.importIntegration=null;this.secretConnection=null;this.secretJson='{}';this.editing.set(false);} draft:Row={}; file:File|null=null; resumeId=''; agentInput=''; activeAgent:Row|null=null;
+  feedbackEvent:Row|null=null;feedbackApplicationId='';
+  feedbackApplications(){return (this.data()['applications']??[]).filter(x=>x['candidateProfileId']===this.feedbackEvent?.['candidateProfileId']&&['Submitted','EmployerResponded'].includes(x['state']));}
+  async linkFeedback(){if(!this.feedbackEvent)return;await this.command('feedback/'+this.feedbackEvent['id']+'/link',{applicationId:this.feedbackApplicationId});if(!this.error())this.feedbackEvent=null;}
   importIntegration:Row|null=null; csvText='';
   async selectCsv(event:Event){const file=(event.target as HTMLInputElement).files?.[0];if(file){if(file.size>5242880){this.error.set('Максимум 5 МБ.');return;}this.csvText=await file.text();}}
   async previewImport(){if(this.importIntegration)await this.command('integrations/'+this.importIntegration['id']+'/preview',{csv:this.csvText});}
@@ -80,6 +83,7 @@ export class App implements OnInit {
  {key:'enabled',label:'Разрешить чтение внешнего источника',type:'checkbox'}]},
  {key:'imports',title:'Импорт журналов',description:'Проверьте строки перед подтверждением. Исторические отклики блокируют повторные заявки.',columns:['integrationId','status','rowCount','added','duplicates','conflicts','createdAt']},
  {key:'imported-applications',title:'История из журналов',description:'Подтверждённый импорт исторических заявок. Эти вакансии исключаются из новых откликов.',columns:['candidateProfileId','vacancyId','sourceState','sourceKey']},
+ {key:'interactions',title:'Взаимодействия',description:'Сообщения, вручную связанные с отправленными откликами.',columns:['jobApplicationId','message','createdAt']},
  {key:'feedback',title:'Обратная связь',description:'Сообщения из настроенных источников. Ответы автоматически не отправляются.',columns:['subject','receivedAt','needsAction']},
     {key:'application-attempts',title:'Попытки отправки',description:'Только изолированный тестовый адаптер. Pending и SubmissionUnknown запрещают повторную отправку.',columns:['jobApplicationId','outcome','evidence','createdAt']},
     {key:'runs',title:'Запуски заданий',description:'История работы фонового процесса.',columns:['scheduledTaskId','status','message','createdAt','finishedAt']},
@@ -87,15 +91,25 @@ export class App implements OnInit {
     {key:'logs',title:'Журнал событий',description:'История изменений рабочего пространства.',columns:['entityType','action','entityId','createdAt']}
   ];
   current=computed(()=>this.sections.find(x=>x.key===this.section())!);
-  rows=computed(()=>(this.data()[this.section()]??[]).filter(x=>(!this.profileId||!x['candidateProfileId']||x['candidateProfileId']===this.profileId)&&(!this.query()||JSON.stringify(x).toLowerCase().includes(this.query().toLowerCase()))));
-  labels:Record<string,string>={name:'Название',email:'Email',skills:'Навыки',geography:'География',version:'Версия',originalName:'Файл',createdAt:'Создано',
+  rows=computed(()=>(this.data()[this.section()]??[]).filter(x=>(!this.profileId||!this.ownerProfile(x)||this.ownerProfile(x)===this.profileId)&&(!this.query()||JSON.stringify(x).toLowerCase().includes(this.query().toLowerCase()))));
+  ownerProfile(row:Row):string|undefined{
+    if(row['candidateProfileId'])return row['candidateProfileId'];
+    const related:Record<string,string>={integrationId:'integrations',jobApplicationId:'applications',scheduledTaskId:'tasks',agentProfileId:'agents'};
+    for(const [key,source] of Object.entries(related))if(row[key]){
+      const parent=(this.data()[source]??[]).find(x=>x['id']===row[key]);
+      return parent?.['candidateProfileId']??'unknown-owner';
+    }
+    return undefined;
+  }
+  fieldOptions(field:Field){return (field.options??[]).filter(x=>x!=='Workflow'||!!this.draft['id']);}
+  labels:Record<string,string>={isPrimary:'Основное',jobPlatformId:'Площадка',browserProfileId:'Браузерный профиль',externalResumeId:'ID резюме',workflowDefinitionId:'Workflow',stage:'Этап',prepared:'Подготовлено',rejected:'Отклонено',transport:'Транспорт',hasSecrets:'Секреты',lastStatus:'Последняя проверка',importConfirmed:'Импорт подтверждён',integrationId:'Интеграция',rowCount:'Строк',added:'Добавлено',duplicates:'Дубликаты',conflicts:'Конфликты',sourceState:'Статус источника',sourceKey:'ID источника',subject:'Тема',receivedAt:'Получено',needsAction:'Требует внимания',jobApplicationId:'Отклик',outcome:'Результат',evidence:'Подтверждение',name:'Название',email:'Email',skills:'Навыки',geography:'География',version:'Версия',originalName:'Файл',createdAt:'Создано',
     url:'URL',adapter:'Адаптер',title:'Должность',employer:'Работодатель',externalId:'Внешний ID',vacancyId:'Вакансия',candidateProfileId:'Профиль',state:'Состояние',
     revision:'Ревизия',taskType:'Этап',enabled:'Включён',kind:'Тип',model:'Модель',busy:'Открыт',intervalMinutes:'Интервал, мин',nextRunAt:'Следующий запуск',
     status:'Статус',detail:'Возможности',scheduledTaskId:'Задание',message:'Результат',finishedAt:'Завершено',agentProfileId:'Агент',
     configurationVersion:'Версия',error:'Ошибка',entityType:'Сущность',action:'Действие',entityId:'ID'};
   async ngOnInit(){const route=location.hash.slice(1);if(this.sections.some(x=>x.key===route))this.section.set(route);await this.refresh();}
   @HostListener('window:hashchange') onHashChange(){const key=location.hash.slice(1);if(key!==this.section()&&this.sections.some(x=>x.key===key))this.navigate(key);}
-  navigate(key:string){this.section.set(key);location.hash=key;this.query.set('');this.editing.set(false);this.result.set('');this.activeAgent=null;this.error.set('');this.message.set('');}
+  navigate(key:string){this.section.set(key);location.hash=key;this.query.set('');this.editing.set(false);this.result.set('');this.activeAgent=null;this.draftApplication=null;this.feedbackEvent=null;this.importIntegration=null;this.secretConnection=null;this.secretJson='{}';this.error.set('');this.message.set('');}
   async api(path:string,method='GET',body?:unknown){
     const response=await fetch('/api/'+path,{method,headers:{'X-JobFlow-Client':'local-ui',...(body instanceof FormData?{}:{'Content-Type':'application/json'})},
       body:body===undefined?undefined:body instanceof FormData?body:JSON.stringify(body)});
@@ -131,8 +145,8 @@ export class App implements OnInit {
   async execute(){if(this.activeAgent)await this.command('agents/'+this.activeAgent['id']+'/execute',{input:this.agentInput});}
   transitions(row:Row){const allowed:Record<string,string[]>={Discovered:['Evaluating'],Evaluating:['Rejected','Drafting','Blocked'],Drafting:['ReadyForReview','Blocked'],
     ReadyForReview:['Drafting','ReadyToSubmit','Rejected'],ReadyToSubmit:['Blocked'],Blocked:['Drafting','Closed'],Submitted:['Closed'],EmployerResponded:['Closed'],SubmissionUnknown:['Closed']};return allowed[row['state']]??[];}
-  display(key:string,value:any):string{const map:Record<string,string>={candidateProfileId:'profiles',vacancyId:'vacancies',scheduledTaskId:'tasks',agentProfileId:'agents'};
-    if(map[key]){const row=(this.data()[map[key]]??[]).find(x=>x['id']===value);if(row)return row['name']??row['title'];}
+  display(key:string,value:any):string{const map:Record<string,string>={candidateProfileId:'profiles',vacancyId:'vacancies',scheduledTaskId:'tasks',agentProfileId:'agents',integrationId:'integrations',workflowDefinitionId:'workflows',jobPlatformId:'platforms',browserProfileId:'browser-profiles',jobApplicationId:'applications'};
+    if(map[key]){const row=(this.data()[map[key]]??[]).find(x=>x['id']===value);if(row)return row['name']??row['title']??(row['vacancyId']?this.display('vacancyId',row['vacancyId']):value);}
     if(typeof value==='boolean')return value?'Да':'Нет';if(key.endsWith('At')&&value)return new Date(value).toLocaleString();return String(value??'—');}
   async removeBrowser(row:Row){if(!confirm('Удалить профиль «'+row['name']+'» и сохранённую авторизацию?'))return;
     await this.action(async()=>{await this.api('browser-profiles/'+row['id']+'?confirm=true','DELETE');});}
