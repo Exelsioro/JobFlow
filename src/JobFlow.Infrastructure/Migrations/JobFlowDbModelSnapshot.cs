@@ -280,6 +280,10 @@ namespace JobFlow.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
@@ -308,11 +312,18 @@ namespace JobFlow.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("Analyzed")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Body")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("CandidateProfileId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedAt")
@@ -423,6 +434,9 @@ namespace JobFlow.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("MailAgentId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("MappingJson")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -458,6 +472,13 @@ namespace JobFlow.Infrastructure.Migrations
 
                     b.Property<bool>("IsTest")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("ResponseStatus")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ResponseStatusAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid>("ResumeVersionId")
                         .HasColumnType("TEXT");

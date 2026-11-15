@@ -41,6 +41,15 @@ public sealed class JobSearchWorkflow(JobFlowDb db, IAgentExecutor agents) : IJo
                 }
             }
 
+            var statusSources = await db.Set<Integration>().Where(x => x.Enabled &&
+                x.CandidateProfileId == profile.Id && x.JobPlatformId.HasValue && platformIds.Contains(x.JobPlatformId.Value) &&
+                (x.Kind == "hh-status" || x.Kind == "status-json")).Select(x => new { x.Id, x.Name }).ToListAsync(ct);
+            foreach (var source in statusSources)
+            {
+                try { await new RemoteIntegrationService(db, new SecretStore(), http, agents).PullAsync(source.Id, ct); }
+                catch (InvalidOperationException) when (!ct.IsCancellationRequested) { discoveryFailures.Add(source.Name); }
+            }
+
             // Imported vacancies remain usable even when a live source is temporarily unavailable.
             var vacancies = await db.Vacancies.Where(x => platformIds.Contains(x.JobPlatformId))
                 .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).ToListAsync(ct);
@@ -114,7 +123,7 @@ public sealed class JobSearchWorkflow(JobFlowDb db, IAgentExecutor agents) : IJo
             }
             if (discoveryFailures.Count > 0)
             {
-                run.Error = "Discovery failed: " + string.Join(", ", discoveryFailures);
+                run.Error = "Platform checks failed: " + string.Join(", ", discoveryFailures);
                 throw new InvalidOperationException(run.Error);
             }
             run.Status = "Succeeded"; run.Stage = "Review";

@@ -70,6 +70,8 @@ public class VacancyEvaluation : Entity
 public enum ApplicationState { Discovered, Evaluating, Rejected, Drafting, ReadyForReview, ReadyToSubmit, Submitting, SubmissionUnknown, Submitted, Blocked, EmployerResponded, Closed }
 public class JobApplication : Entity
 {
+    public string ResponseStatus { get; set; } = "";
+    public DateTime? ResponseStatusAt { get; set; }
     public bool IsTest { get; set; }
     public Guid? WorkflowDefinitionId { get; set; }
     public Guid CandidateProfileId { get; set; }
@@ -89,6 +91,7 @@ public class ApplicationAttempt : Entity
 public class EmployerInteraction : Entity
 {
     public Guid JobApplicationId { get; set; }
+    public string Category { get; set; } = "Uncertain";
     public string SourceEventId { get; set; } = "";
     public string Message { get; set; } = "";
 }
@@ -161,6 +164,7 @@ public class TaskRun : Entity
 }
 public class Integration : Entity
 {
+    public Guid? MailAgentId { get; set; }
     public Guid? JobPlatformId { get; set; } public string MappingJson { get; set; } = "{\"externalId\":\"Id\",\"title\":\"Title\"}"; public string ConflictPolicy { get; set; } = "keep-local"; public string LastStatus { get; set; } = "NotChecked"; public DateTime? LastCheckedAt { get; set; } public string Endpoint { get; set; } = ""; public bool Enabled { get; set; }
     public Guid CandidateProfileId { get; set; }
     public string Name { get; set; } = "";

@@ -26,7 +26,7 @@ public sealed class TestSubmissionService(JobFlowDb db,IJobApplicationProvider p
             var vacancy=await db.Vacancies.SingleAsync(x=>x.Id==application.VacancyId,ct);
             var platform=await db.Platforms.SingleAsync(x=>x.Id==vacancy.JobPlatformId,ct);
             if(platform.Adapter!="test-form")throw new InvalidOperationException("Real platform submission is disabled.");
-            if(await db.Set<Integration>().AnyAsync(x=>x.CandidateProfileId==application.CandidateProfileId&&x.Kind!="gmail"&&x.Kind!="feedback-json"&&!x.ImportConfirmed,ct)||
+            if(await db.Set<Integration>().AnyAsync(x=>x.CandidateProfileId==application.CandidateProfileId&&(x.Kind=="csv"||x.Kind=="google-sheets")&&!x.ImportConfirmed,ct)||
                await db.Set<HistoricalApplication>().AnyAsync(x=>x.CandidateProfileId==application.CandidateProfileId&&x.VacancyId==application.VacancyId,ct))
                 throw new InvalidOperationException("Journal import or historical application blocks submission.");
             var resume=await (from v in db.ResumeVersions join r in db.Resumes on v.ResumeId equals r.Id

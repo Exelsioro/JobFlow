@@ -18,8 +18,8 @@
 <section class="boundary"><h2>Безопасная проверка</h2><p>Playwright заполняет изолированную форму искусственными данными и проверяет квитанцию. Внешних откликов не отправляет.</p><button class="secondary" [disabled]="saving()" (click)="command('browser/dry-run')">{{saving()?'Выполняется…':'Запустить браузерный dry-run'}}</button></section>}
 @if(editing()){
 <form class="editor" (ngSubmit)="save()">
-@if(section()==='agents'){<div class="form-actions"><button type="button" class="secondary" (click)="template('Evaluation')">Шаблон оценки</button><button type="button" class="secondary" (click)="template('CoverLetter')">Шаблон письма</button></div>}<h2>{{draft['id']?'Редактирование':'Новая запись'}}</h2><div class="form-grid">
-@for(field of current().fields;track field.key){<label [class.wide]="field.type==='textarea'" [class.checkbox]="field.type==='checkbox'">
+@if(section()==='agents'){<div class="form-actions"><button type="button" class="secondary" (click)="template('Evaluation')">Шаблон оценки</button><button type="button" class="secondary" (click)="template('CoverLetter')">Шаблон письма</button><button type="button" class="secondary" (click)="template('MailAnalysis')">Шаблон разбора почты</button></div>}<h2>{{draft['id']?'Редактирование':'Новая запись'}}</h2><div class="form-grid">
+@for(field of formFields();track field.key){<label [class.wide]="field.type==='textarea'" [class.checkbox]="field.type==='checkbox'">
 @if(field.type!=='checkbox'){<span>{{field.label}}{{field.required?' *':''}}</span>}
 @switch(field.type){
 @case('textarea'){<textarea [name]="field.key" [(ngModel)]="draft[field.key]" [required]="!!field.required" rows="4"></textarea>}
@@ -74,6 +74,7 @@
 @if(section()==='vacancies'){<button class="text-button" [disabled]="saving()" (click)="evaluate(row)">Оценить</button>}
 @if(section()==='tasks'){<button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+'/run')">Запустить</button><button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+(row['enabled']?'/pause':'/resume'))">{{row['enabled']?'Пауза':'Включить'}}</button><button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+'/stop')">Остановить</button>}
 @if(section()==='browser-profiles'){<button class="text-button" [disabled]="saving()" (click)="command('browser-profiles/'+row['id']+(row['busy']?'/close':'/open'))">{{row['busy']?'Закрыть':'Авторизоваться'}}</button><button class="text-button danger" [disabled]="saving()||row['busy']" (click)="removeBrowser(row)">Удалить</button>}
+@if(section()==='applications'&&!row['isTest']&&row['state']==='ReadyToSubmit'){<button class="text-button" [disabled]="saving()" (click)="recordManualSubmission(row)">Отметить отправленным вручную</button>}
 @if(section()==='applications'&&!row['isTest']&&row['state']==='ReadyToSubmit'&&vacancyUrl(row);as url){<a [href]="url" target="_blank" rel="noopener noreferrer">Открыть вакансию</a>}
 @if(section()==='applications'&&row['isTest']&&row['state']==='ReadyToSubmit'){<button class="text-button" [disabled]="saving()" (click)="testSubmit(row)">Проверить тестовую отправку</button>}
 @if(section()==='applications'&&row['state']==='Submitting'){<button class="text-button" [disabled]="saving()" (click)="command('applications/'+row['id']+'/mark-unknown')">Зафиксировать неизвестный результат</button>}

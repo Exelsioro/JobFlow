@@ -10,6 +10,18 @@ public static class WorkflowEndpoints
         app.MapGet("/api/application-attempts",async(JobFlowDb db)=>await db.Set<ApplicationAttempt>().AsNoTracking().OrderByDescending(x=>x.CreatedAt).ToListAsync());
         app.MapPost("/api/applications/{id:guid}/test-submit",async(Guid id,TestSubmissionInput input,TestSubmissionService service,CancellationToken ct)=>Results.Ok(await service.SubmitAsync(id,input.IdempotencyKey,input.Revision,ct)));
         app.MapPost("/api/applications/{id:guid}/mark-unknown",async(Guid id,TestSubmissionService service,CancellationToken ct)=>{await service.MarkUnknownAsync(id,ct);return Results.Ok(new{status="SubmissionUnknown"});});
+        app.MapPost("/api/applications/{id:guid}/record-manual-submission", async (Guid id, ManualSubmissionInput input, JobFlowDb db, CancellationToken ct) =>
+        {
+            var application = await db.Applications.SingleAsync(x => x.Id == id, ct);
+            if (application.Revision != input.Revision) throw new DbUpdateConcurrencyException("Application changed.");
+            if (application.IsTest || application.State != ApplicationState.ReadyToSubmit)
+                throw new InvalidOperationException("Only approved real-platform drafts can be recorded as manually sent.");
+            application.State = ApplicationState.Submitted;
+            application.Revision++;
+            db.Audit.Add(new AuditEvent { EntityId = id, EntityType = nameof(JobApplication), Action = "ManualSubmissionRecorded" });
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(application);
+        });
         app.MapGet("/api/workflows", async (JobFlowDb db) => await db.Set<WorkflowDefinition>().AsNoTracking().ToListAsync());
         app.MapGet("/api/workflow-runs", async (JobFlowDb db) => await db.Set<WorkflowRun>().AsNoTracking().OrderByDescending(x => x.CreatedAt).Take(200).ToListAsync());
         app.MapGet("/api/agent-templates", () => AgentTemplates.All);
@@ -46,6 +58,7 @@ public static class WorkflowEndpoints
         { await workflow.SaveDraftAsync(id, input.Letter, input.Revision, ct); return Results.Ok(new { saved = true }); });
     }
     public record TestSubmissionInput(string IdempotencyKey,int Revision);
+    public record ManualSubmissionInput(int Revision);
     public record DraftInput(string Letter, int Revision);
 }
 

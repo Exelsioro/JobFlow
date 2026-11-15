@@ -29,7 +29,7 @@ public static class IntegrationEndpoints
         });
         app.MapGet("/api/integrations", async (JobFlowDb db, SecretStore secrets) =>
             (await db.Set<Integration>().AsNoTracking().ToListAsync()).Select(x => new { x.Id,x.Name,x.Kind,x.CandidateProfileId,x.JobPlatformId,
-                x.MappingJson,x.ConflictPolicy,x.ImportConfirmed,x.LastStatus,x.LastCheckedAt,x.Endpoint,x.Enabled,hasSecrets=secrets.Exists(x.Id) }));
+                x.MappingJson,x.ConflictPolicy,x.MailAgentId,x.ImportConfirmed,x.LastStatus,x.LastCheckedAt,x.Endpoint,x.Enabled,hasSecrets=secrets.Exists(x.Id) }));
         app.MapPost("/api/integrations", async (Integration input, JobFlowDb db, CancellationToken ct) =>
         {
             await Validate(input,db,ct);input.Id=Guid.NewGuid();input.ImportConfirmed=false;input.LastStatus="NotChecked";input.LastCheckedAt=null;
@@ -63,9 +63,8 @@ public static class IntegrationEndpoints
                 return Results.Ok(existing);
             }
             if(application.State is not (ApplicationState.Submitted or ApplicationState.EmployerResponded))throw new ArgumentException("Only submitted applications can receive employer feedback.");
-            var interaction=new EmployerInteraction{JobApplicationId=application.Id,SourceEventId=key,Message=feedback.Subject+"\n"+feedback.Body};
-            if(application.State==ApplicationState.Submitted)JobFlow.Application.Workflow.Transition(application,ApplicationState.EmployerResponded);
-            db.Add(interaction);feedback.NeedsAction=false;await db.SaveChangesAsync(ct);return Results.Ok(interaction);
+            var interaction=FeedbackProcessing.Link(db,feedback,application);
+            await db.SaveChangesAsync(ct);return Results.Ok(interaction);
         });
         app.MapGet("/api/feedback",async(JobFlowDb db)=>await db.Set<FeedbackEvent>().AsNoTracking().OrderByDescending(x=>x.ReceivedAt).Take(500).ToListAsync());
         app.MapPost("/api/feedback/{id:guid}/acknowledge",async(Guid id,JobFlowDb db,CancellationToken ct)=>{
@@ -75,7 +74,7 @@ public static class IntegrationEndpoints
     private static async Task Validate(Integration input,JobFlowDb db,CancellationToken ct)
     {
         if(string.IsNullOrWhiteSpace(input.Name))throw new ArgumentException("Integration name is required.");
-        if(input.Kind is not ("csv" or "google-sheets" or "gmail" or "feedback-json"))throw new ArgumentException("Unsupported integration kind.");
+        if(input.Kind is not ("csv" or "google-sheets" or "gmail" or "feedback-json" or "hh-status" or "status-json"))throw new ArgumentException("Unsupported integration kind.");
         if(input.ConflictPolicy is not ("keep-local" or "update-vacancies"))throw new ArgumentException("Unknown conflict policy.");
         if(!await db.Profiles.AnyAsync(x=>x.Id==input.CandidateProfileId,ct))throw new ArgumentException("Profile not found.");
         if(input.Kind is "csv" or "google-sheets")
@@ -83,6 +82,14 @@ public static class IntegrationEndpoints
             if(!await db.Platforms.AnyAsync(x=>x.Id==input.JobPlatformId,ct))throw new ArgumentException("Choose a platform for the journal.");
             _=JsonSerializer.Deserialize<Dictionary<string,string>>(input.MappingJson)??throw new ArgumentException("Mapping must be an object.");
         }
+        if (input.Kind is "hh-status" or "status-json")
+        {
+            var platform = await db.Platforms.SingleOrDefaultAsync(x => x.Id == input.JobPlatformId, ct);
+            if (platform == null || (input.Kind == "hh-status" && platform.Adapter != "headhunter"))
+                throw new ArgumentException("Choose a matching platform for status monitoring.");
+        }
+        if(input.MailAgentId is Guid agent && (input.Kind!="gmail" || !await db.Agents.AnyAsync(x=>x.Id==agent && x.CandidateProfileId==input.CandidateProfileId && x.TaskType=="MailAnalysis",ct)))
+            throw new ArgumentException("Choose a MailAnalysis agent from the same profile for Gmail.");
         if(input.Kind!="csv")
         {
             if (!Uri.TryCreate(input.Endpoint,UriKind.Absolute,out var endpoint)) throw new ArgumentException("Integration endpoint is required.");

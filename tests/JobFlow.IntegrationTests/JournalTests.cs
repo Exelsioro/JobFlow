@@ -48,7 +48,7 @@ public class JournalTests
         Assert.Equal("Preview",(await fixture.Db.Set<JournalImport>().SingleAsync()).Status);
         Assert.False(fixture.Integration.ImportConfirmed);Assert.Equal(0,await fixture.Db.Vacancies.CountAsync());
     }
-    [Fact] public async Task GmailUsesReadOnlyMetadataAndDeduplicatesMessages()
+    [Fact] public async Task GmailReadsTextAndDeduplicatesMessages()
     {
         await using var fixture=await Fixture.Create();
         fixture.Integration.Kind="gmail";fixture.Integration.Endpoint="https://gmail.googleapis.com/gmail/v1/users/me/messages?q=subject%3Ainterview";fixture.Integration.Enabled=true;
@@ -57,6 +57,8 @@ public class JournalTests
         var service=new RemoteIntegrationService(fixture.Db,new SecretStore(fixture.Root),http);
         await service.PullAsync(fixture.Integration.Id,default);await service.PullAsync(fixture.Integration.Id,default);
         var feedback=await fixture.Db.Set<FeedbackEvent>().SingleAsync();Assert.Equal("Interview",feedback.Subject);
+        Assert.Contains("https://hh.ru/vacancy/123", feedback.Body);
+        Assert.Contains("Interview invitation", feedback.Body);
     }
     [Fact]
     public async Task SheetsExportRequiresFreshPreviewAndUsesRawValues()
@@ -82,6 +84,94 @@ public class JournalTests
         await writer.PreviewAsync(integration.Id, "Export", default, fresh.Digest);
         Assert.Equal(1, handler.Writes);
         Assert.Contains(await fixture.Db.Audit.ToListAsync(), x => x.Action == "SheetsExported");
+    }
+
+    [Theory]
+    [InlineData(false, "Invitation")]
+    [InlineData(true, "Rejection")]
+    public async Task MailClassifiesAndLinksOnlyAnUnambiguousApplication(bool useAgent, string expected)
+    {
+        await using var fixture = await Fixture.Create();
+        var db = fixture.Db;
+        var integration = fixture.Integration;
+        integration.Kind = "gmail";
+        var app = await AddApplication(fixture, "one");
+        var agent = new MailAgent();
+        if (useAgent)
+        {
+            var provider = new ModelProvider();
+            var config = new AgentProfile { CandidateProfileId = integration.CandidateProfileId, Enabled = true, TaskType = "MailAnalysis", ModelProviderId = provider.Id };
+            db.AddRange(provider, config);
+            integration.MailAgentId = config.Id;
+        }
+        var exact = new FeedbackEvent
+        {
+            CandidateProfileId = integration.CandidateProfileId, IntegrationId = integration.Id, SourceEventId = "one",
+            Subject = "Interview invitation", Body = "https://hh.ru/vacancy/one?from=email", ReceivedAt = DateTime.UtcNow.AddSeconds(1)
+        };
+        var ambiguous = new FeedbackEvent
+        {
+            CandidateProfileId = integration.CandidateProfileId, IntegrationId = integration.Id, SourceEventId = "two",
+            Subject = "Interview invitation", Body = "No vacancy reference", ReceivedAt = exact.ReceivedAt
+        };
+        db.AddRange(exact, ambiguous);
+        await db.SaveChangesAsync();
+        var service = new FeedbackProcessing(db, agent);
+        await service.ProcessAsync(integration, default);
+        await service.ProcessAsync(integration, default);
+        Assert.Equal(expected, app.ResponseStatus);
+        Assert.Equal(ApplicationState.EmployerResponded, app.State);
+        Assert.Equal(expected, (await db.Set<EmployerInteraction>().SingleAsync()).Category);
+        Assert.False(exact.NeedsAction);
+        Assert.True(ambiguous.NeedsAction);
+        Assert.Equal(useAgent ? 2 : 0, agent.Calls);
+    }
+
+    [Fact]
+    public async Task HeadHunterStatusReadsApplicantNegotiationsAndKeepsNewestObservation()
+    {
+        await using var fixture = await Fixture.Create();
+        var db = fixture.Db;
+        var app = await AddApplication(fixture, "123");
+        var integration = fixture.Integration;
+        integration.Kind = "hh-status";
+        integration.Enabled = true;
+        integration.Endpoint = "https://api.hh.ru/negotiations";
+        await db.SaveChangesAsync();
+        var secrets = new SecretStore(fixture.Root);
+        await secrets.SaveAsync(integration.Id, new() { ["Authorization"] = "Bearer synthetic" }, default);
+        var timestamp = DateTime.UtcNow.AddSeconds(1).ToString("O");
+        var json = $$"""{"pages":1,"items":[{"vacancy":{"id":"123"},"state":{"id":"discard"},"updated_at":"{{timestamp}}"},{"vacancy":{"id":"123"},"state":{"id":"invitation"},"updated_at":"2000-01-01T00:00:00Z"}]}""";
+        using var http = new HttpClient(new Handler(json));
+        var source = new RemoteIntegrationService(db, secrets, http);
+        await source.PullAsync(integration.Id, default);
+        await source.PullAsync(integration.Id, default);
+        Assert.Equal("Rejection", app.ResponseStatus);
+        Assert.Equal("Succeeded", integration.LastStatus);
+        Assert.Equal(1, await db.Audit.CountAsync(x => x.Action == "PlatformStatusObserved"));
+        Assert.Empty(await db.Set<ApplicationAttempt>().ToListAsync());
+    }
+
+    private static async Task<JobApplication> AddApplication(Fixture fixture, string externalId)
+    {
+        var resume = new Resume { CandidateProfileId = fixture.Integration.CandidateProfileId };
+        var version = new ResumeVersion { ResumeId = resume.Id, Version = 1 };
+        var vacancy = new Vacancy { JobPlatformId = fixture.Integration.JobPlatformId!.Value, ExternalId = externalId, Url = "https://hh.ru/vacancy/" + externalId };
+        var app = new JobApplication { CandidateProfileId = resume.CandidateProfileId, ResumeVersionId = version.Id, VacancyId = vacancy.Id, State = ApplicationState.Submitted };
+        fixture.Db.AddRange(resume, version, vacancy, app);
+        await fixture.Db.SaveChangesAsync();
+        return app;
+    }
+
+    private sealed class MailAgent : JobFlow.Application.IAgentExecutor
+    {
+        public int Calls;
+        public Task<JobFlow.Application.AgentExecutionResult> ExecuteAsync(JobFlow.Application.AgentExecutionRequest request, CancellationToken ct)
+        {
+            Calls++;
+            Assert.Contains("Interview invitation", request.Input);
+            return Task.FromResult(new JobFlow.Application.AgentExecutionResult(Guid.NewGuid(), "Succeeded", """{"category":"Rejection"}"""));
+        }
     }
 
     private sealed class SheetsHandler : HttpMessageHandler
@@ -123,9 +213,14 @@ public class JournalTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken ct)
         {
             Assert.Equal(HttpMethod.Get,request.Method);
-            var body=request.RequestUri!.AbsolutePath.EndsWith("/m1")?
-                """{"id":"m1","snippet":"Synthetic feedback","internalDate":"1794736800000","payload":{"headers":[{"name":"Subject","value":"Interview"}]}}""":
-                """{"messages":[{"id":"m1"}]}""";
+            var body = """{"messages":[{"id":"m1"}]}""";
+            if (request.RequestUri!.AbsolutePath.EndsWith("/m1"))
+            {
+                Assert.Equal("?format=full", request.RequestUri.Query);
+                var data = Convert.ToBase64String(Encoding.UTF8.GetBytes("""<a href="https://hh.ru/vacancy/123">Interview invitation</a>"""))
+                    .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+                body = $$$$"""{"id":"m1","snippet":"Synthetic feedback","internalDate":"1794736800000","payload":{"mimeType":"text/html","headers":[{"name":"Subject","value":"Interview"}],"body":{"data":"{{{{data}}}}"}}}""";
+            }
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK){Content=new StringContent(body,Encoding.UTF8,"application/json")});
         }
     }

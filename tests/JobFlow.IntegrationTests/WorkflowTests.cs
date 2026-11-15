@@ -53,7 +53,7 @@ public class WorkflowTests
         var run = await db.Set<WorkflowRun>().SingleAsync();
         Assert.Equal(2, run.Prepared);
         Assert.Equal(failedSource ? "Failed" : "Succeeded", run.Status);
-        Assert.Equal(failedSource ? "Discovery failed: Unavailable" : "", run.Error);
+        Assert.Equal(failedSource ? "Platform checks failed: Unavailable" : "", run.Error);
         Assert.Equal(2, await db.Applications.CountAsync());
         Assert.False(await db.Applications.AnyAsync(app => db.Vacancies.Any(v => v.Id == app.VacancyId && v.JobPlatformId == excluded.Id)));
     }

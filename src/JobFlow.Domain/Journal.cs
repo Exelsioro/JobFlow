@@ -27,5 +27,7 @@ public class FeedbackEvent : Entity
     public string Subject { get; set; } = "";
     public string Body { get; set; } = "";
     public DateTime ReceivedAt { get; set; }
+    public string Category { get; set; } = "Uncertain";
+    public bool Analyzed { get; set; }
     public bool NeedsAction { get; set; } = true;
 }

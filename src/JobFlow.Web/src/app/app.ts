@@ -41,6 +41,7 @@ export class App implements OnInit {
   draftApplication:Row|null=null; draftLetter='';
   async editLetter(row:Row){this.draftApplication={...row};this.draftLetter=row['coverLetter'];}
   async saveLetter(){if(!this.draftApplication)return;await this.action(async()=>{await this.api('applications/'+this.draftApplication!['id']+'/draft','PUT',{letter:this.draftLetter,revision:this.draftApplication!['revision']});this.draftApplication=null;this.message.set('Черновик сохранён.');});}
+  async recordManualSubmission(row:Row){if(confirm('Вы уже отправили этот отклик на площадке?'))await this.command('applications/'+row['id']+'/record-manual-submission',{revision:row['revision']});}
   async testSubmit(row:Row){await this.command('applications/'+row['id']+'/test-submit',{idempotencyKey:'test-'+row['id'],revision:row['revision']});}
   async template(kind:string){await this.action(async()=>{const all=await this.api('agent-templates');const value=all.find((x:Row)=>x['taskType']===kind);this.draft={...this.draft,...value,userPromptTemplate:'{{input}}'};});}
   sections:Section[]=[
@@ -70,13 +71,13 @@ export class App implements OnInit {
       {key:'description',label:'Описание и требования',type:'textarea',required:true},
       {key:'requiredSkills',label:'Обязательные навыки через запятую'},{key:'location',label:'Локация'},{key:'workMode',label:'Формат работы'},{key:'level',label:'Уровень'},
       {key:'salaryMax',label:'Верхняя граница зарплаты',type:'number'},{key:'currency',label:'Валюта'},{key:'publishedAt',label:'Опубликована (ISO дата и время)'}]},
-    {key:'applications',title:'Отклики',description:'Подготовка и проверка. Реальная отправка отключена.',columns:['vacancyId','candidateProfileId','state','revision'],fields:[
+    {key:'applications',title:'Отклики',description:'Подготовка и проверка. Реальная отправка отключена.',columns:['vacancyId','candidateProfileId','state','responseStatus','responseStatusAt','revision'],fields:[
       {key:'candidateProfileId',label:'Профиль',type:'select',source:'profiles',required:true},{key:'vacancyId',label:'Вакансия',type:'select',source:'vacancies',required:true},
       {key:'resumeVersionId',label:'Версия резюме',type:'select',source:'resumes',required:true},{key:'coverLetter',label:'Сопроводительное письмо',type:'textarea'}]},
     {key:'agents',title:'Агенты',description:'Версии конфигурации сохраняются. Включение разрешает вызов провайдера.',columns:['name','taskType','version','enabled'],fields:[
       {key:'name',label:'Название',required:true},{key:'candidateProfileId',label:'Профиль',type:'select',source:'profiles',required:true},
       {key:'modelProviderId',label:'Провайдер',type:'select',source:'providers',required:true},
-      {key:'taskType',label:'Этап',type:'select',options:['Discovery','Evaluation','CoverLetter','Preparation','Submission','Monitoring','Custom']},
+      {key:'taskType',label:'Этап',type:'select',options:['Discovery','Evaluation','CoverLetter','Preparation','Submission','Monitoring','MailAnalysis','Custom']},
       {key:'description',label:'Описание'},{key:'model',label:'Модель (пусто — модель провайдера)'},
       {key:'reasoning',label:'Reasoning',type:'select',options:['','minimal','low','medium','high','xhigh']},
       {key:'systemPrompt',label:'Системная инструкция',type:'textarea'},{key:'userPromptTemplate',label:'Шаблон запроса с {{input}}',type:'textarea'},
@@ -97,15 +98,16 @@ export class App implements OnInit {
       {key:'timeZone',label:'Часовой пояс IANA',required:true},{key:'enabled',label:'Включить расписание',type:'checkbox'}]},
     {key:'integrations',title:'Интеграции',description:'CSV и Google Sheets: импорт после подтверждения. Gmail и JSON: чтение событий без отправки ответов.',columns:['name','kind','lastStatus','importConfirmed','enabled'],fields:[
  {key:'name',label:'Название',required:true},{key:'candidateProfileId',label:'Профиль',type:'select',source:'profiles',required:true},
- {key:'kind',label:'Источник',type:'select',options:['csv','google-sheets','gmail','feedback-json']},
- {key:'jobPlatformId',label:'Площадка журнала (CSV/Sheets)',type:'select',source:'platforms'},
+ {key:'kind',label:'Источник',type:'select',options:['csv','google-sheets','gmail','feedback-json','hh-status','status-json']},
+ {key:'jobPlatformId',label:'Площадка журнала или проверки статусов',type:'select',source:'platforms'},
+ {key:'mailAgentId',label:'Модель разбора Gmail (через агента)',type:'select',source:'mail-agents'},
  {key:'endpoint',label:'API endpoint (для сетевого источника)'},{key:'mappingJson',label:'JSON-сопоставление: externalId, title, employer, url, description, applicationState → заголовки столбцов',type:'textarea'},
  {key:'conflictPolicy',label:'Конфликты вакансий',type:'select',options:['keep-local','update-vacancies']},
  {key:'enabled',label:'Разрешить чтение внешнего источника',type:'checkbox'}]},
  {key:'imports',title:'Импорт журналов',description:'Проверьте строки перед подтверждением. Исторические отклики блокируют повторные заявки.',columns:['integrationId','status','rowCount','added','duplicates','conflicts','createdAt']},
  {key:'imported-applications',title:'История из журналов',description:'Подтверждённый импорт исторических заявок. Эти вакансии исключаются из новых откликов.',columns:['candidateProfileId','vacancyId','sourceState','sourceKey']},
- {key:'interactions',title:'Взаимодействия',description:'Сообщения, вручную связанные с отправленными откликами.',columns:['jobApplicationId','message','createdAt']},
- {key:'feedback',title:'Обратная связь',description:'Сообщения из настроенных источников. Ответы автоматически не отправляются.',columns:['subject','receivedAt','needsAction']},
+ {key:'interactions',title:'Взаимодействия',description:'Сообщения, связанные с откликами автоматически или вручную.',columns:['jobApplicationId','category','message','createdAt']},
+ {key:'feedback',title:'Обратная связь',description:'Сообщения из настроенных источников. Ответы автоматически не отправляются.',columns:['subject','category','analyzed','receivedAt','needsAction']},
     {key:'application-attempts',title:'Попытки отправки',description:'Только изолированный тестовый адаптер. Pending и SubmissionUnknown запрещают повторную отправку.',columns:['jobApplicationId','outcome','evidence','createdAt']},
     {key:'runs',title:'Запуски заданий',description:'История работы фонового процесса.',columns:['scheduledTaskId','status','message','createdAt','finishedAt']},
     {key:'executions',title:'Запуски агентов',description:'Модель и версия конфигурации. Вход и выход по умолчанию не сохраняются.',columns:['agentProfileId','configurationVersion','model','status','error','createdAt']},
@@ -122,8 +124,9 @@ export class App implements OnInit {
     }
     return undefined;
   }
+  formFields(){return (this.current().fields??[]).filter(field=>field.key!=='mailAgentId'||this.draft['kind']==='gmail');}
   fieldOptions(field:Field){return (field.options??[]).filter(x=>x!=='Workflow'||!!this.draft['id']);}
-  labels:Record<string,string>={jobPlatformIds:'Площадки',isPrimary:'Основное',jobPlatformId:'Площадка',browserProfileId:'Браузерный профиль',externalResumeId:'ID резюме',workflowDefinitionId:'Workflow',stage:'Этап',prepared:'Подготовлено',rejected:'Отклонено',transport:'Транспорт',hasSecrets:'Секреты',lastStatus:'Последняя проверка',importConfirmed:'Импорт подтверждён',integrationId:'Интеграция',rowCount:'Строк',added:'Добавлено',duplicates:'Дубликаты',conflicts:'Конфликты',sourceState:'Статус источника',sourceKey:'ID источника',subject:'Тема',receivedAt:'Получено',needsAction:'Требует внимания',jobApplicationId:'Отклик',outcome:'Результат',evidence:'Подтверждение',name:'Название',email:'Email',skills:'Навыки',geography:'География',version:'Версия',originalName:'Файл',createdAt:'Создано',
+  labels:Record<string,string>={responseStatus:'Ответ работодателя',responseStatusAt:'Обновлено источником',category:'Категория',analyzed:'Разобрано',jobPlatformIds:'Площадки',isPrimary:'Основное',jobPlatformId:'Площадка',browserProfileId:'Браузерный профиль',externalResumeId:'ID резюме',workflowDefinitionId:'Workflow',stage:'Этап',prepared:'Подготовлено',rejected:'Отклонено',transport:'Транспорт',hasSecrets:'Секреты',lastStatus:'Последняя проверка',importConfirmed:'Импорт подтверждён',integrationId:'Интеграция',rowCount:'Строк',added:'Добавлено',duplicates:'Дубликаты',conflicts:'Конфликты',sourceState:'Статус источника',sourceKey:'ID источника',subject:'Тема',receivedAt:'Получено',needsAction:'Требует внимания',jobApplicationId:'Отклик',outcome:'Результат',evidence:'Подтверждение',name:'Название',email:'Email',skills:'Навыки',geography:'География',version:'Версия',originalName:'Файл',createdAt:'Создано',
     url:'URL',adapter:'Адаптер',title:'Должность',employer:'Работодатель',externalId:'Внешний ID',vacancyId:'Вакансия',candidateProfileId:'Профиль',state:'Состояние',
     revision:'Ревизия',taskType:'Этап',enabled:'Включён',kind:'Тип',model:'Модель',busy:'Открыт',intervalMinutes:'Интервал, мин',nextRunAt:'Следующий запуск',
     status:'Статус',detail:'Возможности',scheduledTaskId:'Задание',message:'Результат',finishedAt:'Завершено',agentProfileId:'Агент',
@@ -150,7 +153,7 @@ export class App implements OnInit {
     outputSchema:'{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"],"additionalProperties":false}'};this.editing.set(true);this.error.set('');}
   edit(row:Row){this.draft={...row};this.editing.set(true);}
   copy(row:Row){this.draft={...row,name:row['name']+' — копия',enabled:false};delete this.draft['id'];this.editing.set(true);}
-  options(field:Field){let list=field.source?this.data()[field.source]??[]:[];if(field.source==='resumes')list=list.filter(x=>x['candidateProfileId']===this.draft['candidateProfileId']);return list;}
+  options(field:Field){if(field.source==='mail-agents')return (this.data()['agents']??[]).filter(x=>x['taskType']==='MailAnalysis'&&x['candidateProfileId']===this.draft['candidateProfileId']);let list=field.source?this.data()[field.source]??[]:[];if(field.source==='resumes')list=list.filter(x=>x['candidateProfileId']===this.draft['candidateProfileId']);return list;}
   optionId(field:Field,row:Row){return field.source==='resumes'?row['versionId']:row['id'];}
   optionName(row:Row){return(row['name']??row['title']??row['id'])+(row['version']?' · v'+row['version']:'');}
   platformName=(id:string)=>this.display('jobPlatformId',id);
@@ -166,7 +169,7 @@ export class App implements OnInit {
     this.draft['jobPlatformIds']=(this.data()['platforms']??[]).map(row=>row['id']);
     this.draft['jobPlatformId']=this.draft['jobPlatformIds'][0];
   }
-  async save(){await this.action(async()=>{for(const key of ['evaluationAgentId','letterAgentId','jobPlatformId','integrationId','browserProfileId'])if(this.draft[key]==='')this.draft[key]=null;await this.api(this.section()+(this.draft['id']?'/'+this.draft['id']:''),this.draft['id']?'PUT':'POST',this.draft);this.editing.set(false);this.message.set('Сохранено.');});}
+  async save(){await this.action(async()=>{if(this.section()==='integrations'&&this.draft['kind']!=='gmail')this.draft['mailAgentId']=null;for(const key of ['evaluationAgentId','letterAgentId','mailAgentId','jobPlatformId','integrationId','browserProfileId'])if(this.draft[key]==='')this.draft[key]=null;await this.api(this.section()+(this.draft['id']?'/'+this.draft['id']:''),this.draft['id']?'PUT':'POST',this.draft);this.editing.set(false);this.message.set('Сохранено.');});}
   chooseFile(event:Event){this.file=(event.target as HTMLInputElement).files?.[0]??null;}
   uniqueResumes(){return [...new Map((this.data()['resumes']??[]).filter(x=>x['candidateProfileId']===this.profileId).map(x=>[x['id'],x])).values()];}
   async upload(){if(!this.file||!this.profileId){this.error.set('Выберите профиль и PDF.');return;}await this.action(async()=>{
