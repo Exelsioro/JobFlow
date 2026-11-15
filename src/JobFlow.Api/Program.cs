@@ -268,6 +268,7 @@ app.MapGet("/api/export/vacancies.csv", async (JobFlowDb db, CancellationToken c
     Results.File(System.Text.Encoding.UTF8.GetBytes(await new CsvJournal().ExportAsync(await db.Vacancies.AsNoTracking().ToListAsync(ct), ct)), "text/csv", "vacancies.csv"));
 app.MapIntegrationEndpoints();
 app.MapWorkflowEndpoints();
+app.MapBrowserDraftEndpoints();
 app.MapResumeEndpoints();
 app.MapMcpEndpoints();
 app.MapFallbackToFile("index.html");

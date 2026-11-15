@@ -8,7 +8,7 @@ type Section = {key:string;title:string;description:string;columns?:string[];fie
 export class App implements OnInit {
   section=signal('dashboard'); data=signal<Record<string,Row[]>>({}); status=signal<Row>({});
   loading=signal(false); saving=signal(false); error=signal(''); message=signal(''); result=signal(''); editing=signal(false); query=signal('');
-  private selectedProfile=signal(''); get profileId(){return this.selectedProfile();} set profileId(value:string){this.selectedProfile.set(value);this.resumeId='';this.activeAgent=null;this.draftApplication=null;this.feedbackEvent=null;this.importIntegration=null;this.sheetIntegration=null;this.sheetPreview=null;this.secretConnection=null;this.secretJson='{}';this.editing.set(false);} draft:Row={}; file:File|null=null; resumeId=''; agentInput=''; activeAgent:Row|null=null;
+  private selectedProfile=signal(''); get profileId(){return this.selectedProfile();} set profileId(value:string){this.selectedProfile.set(value);this.resumeId='';this.activeAgent=null;this.draftApplication=null;this.browserDraft=null;this.browserPreview=null;this.feedbackEvent=null;this.importIntegration=null;this.sheetIntegration=null;this.sheetPreview=null;this.secretConnection=null;this.secretJson='{}';this.editing.set(false);} draft:Row={}; file:File|null=null; resumeId=''; agentInput=''; activeAgent:Row|null=null;
   feedbackEvent:Row|null=null;feedbackApplicationId='';
   feedbackApplications(){return (this.data()['applications']??[]).filter(x=>x['candidateProfileId']===this.feedbackEvent?.['candidateProfileId']&&['Submitted','EmployerResponded'].includes(x['state']));}
   async linkFeedback(){if(!this.feedbackEvent)return;await this.command('feedback/'+this.feedbackEvent['id']+'/link',{applicationId:this.feedbackApplicationId});if(!this.error())this.feedbackEvent=null;}
@@ -41,6 +41,41 @@ export class App implements OnInit {
   draftApplication:Row|null=null; draftLetter='';
   async editLetter(row:Row){this.draftApplication={...row};this.draftLetter=row['coverLetter'];}
   async saveLetter(){if(!this.draftApplication)return;await this.action(async()=>{await this.api('applications/'+this.draftApplication!['id']+'/draft','PUT',{letter:this.draftLetter,revision:this.draftApplication!['revision']});this.draftApplication=null;this.message.set('Черновик сохранён.');});}
+  browserDraft:Row|null=null;
+  browserPreview:Row|null=null;
+  browserContactName='';
+  browserFormIndex:number|null=null;
+  async openBrowserDraft(row:Row){
+    this.browserDraft=row;
+    this.browserPreview=null;
+    this.browserFormIndex=null;
+    await this.command('applications/'+row['id']+'/browser-draft/open');
+  }
+  async inspectBrowserDraft(){
+    if(!this.browserDraft)return;
+    const draft=this.browserDraft;
+    this.browserPreview=null;
+    this.browserFormIndex=null;
+    await this.action(async()=>{
+      const preview=await this.api('applications/'+draft['id']+'/browser-draft/inspect','POST',{});
+      if(this.browserDraft!==draft)return;
+      this.browserPreview=preview;
+      this.browserContactName=preview.contactName;
+      if(preview.forms.length===1)this.browserFormIndex=preview.forms[0].index;
+    });
+  }
+  async fillBrowserDraft(){
+    if(!this.browserDraft||!this.browserPreview||this.browserFormIndex===null)return;
+    const id=this.browserDraft['id'];
+    const {token}=this.browserPreview;
+    const formIndex=this.browserFormIndex;
+    this.browserPreview=null;
+    await this.action(async()=>{
+      const result=await this.api('applications/'+id+'/browser-draft/fill','POST',{token,formIndex,contactName:this.browserContactName});
+      this.message.set('Заполнено полей: '+result.filled+'. Проверьте форму в браузере.');
+    });
+  }
+  browserFieldLabels:Record<string,string>={name:'Имя',email:'Email',letter:'Сопроводительное письмо',resume:'Резюме (приложите вручную)'};
   async recordManualSubmission(row:Row){if(confirm('Вы уже отправили этот отклик на площадке?'))await this.command('applications/'+row['id']+'/record-manual-submission',{revision:row['revision']});}
   async testSubmit(row:Row){await this.command('applications/'+row['id']+'/test-submit',{idempotencyKey:'test-'+row['id'],revision:row['revision']});}
   async template(kind:string){await this.action(async()=>{const all=await this.api('agent-templates');const value=all.find((x:Row)=>x['taskType']===kind);this.draft={...this.draft,...value,userPromptTemplate:'{{input}}'};});}
@@ -133,7 +168,7 @@ export class App implements OnInit {
     configurationVersion:'Версия',error:'Ошибка',entityType:'Сущность',action:'Действие',entityId:'ID'};
   async ngOnInit(){const route=location.hash.slice(1);if(this.sections.some(x=>x.key===route))this.section.set(route);await this.refresh();}
   @HostListener('window:hashchange') onHashChange(){const key=location.hash.slice(1);if(key!==this.section()&&this.sections.some(x=>x.key===key))this.navigate(key);}
-  navigate(key:string){this.section.set(key);location.hash=key;this.query.set('');this.editing.set(false);this.result.set('');this.activeAgent=null;this.draftApplication=null;this.feedbackEvent=null;this.importIntegration=null;this.sheetIntegration=null;this.sheetPreview=null;this.secretConnection=null;this.secretJson='{}';this.error.set('');this.message.set('');}
+  navigate(key:string){this.section.set(key);location.hash=key;this.query.set('');this.editing.set(false);this.result.set('');this.activeAgent=null;this.draftApplication=null;this.browserDraft=null;this.browserPreview=null;this.feedbackEvent=null;this.importIntegration=null;this.sheetIntegration=null;this.sheetPreview=null;this.secretConnection=null;this.secretJson='{}';this.error.set('');this.message.set('');}
   async api(path:string,method='GET',body?:unknown){
     const response=await fetch('/api/'+path,{method,headers:{'X-JobFlow-Client':'local-ui',...(body instanceof FormData?{}:{'Content-Type':'application/json'})},
       body:body===undefined?undefined:body instanceof FormData?body:JSON.stringify(body)});

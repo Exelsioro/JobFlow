@@ -75,7 +75,7 @@
 @if(section()==='tasks'){<button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+'/run')">Запустить</button><button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+(row['enabled']?'/pause':'/resume'))">{{row['enabled']?'Пауза':'Включить'}}</button><button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+'/stop')">Остановить</button>}
 @if(section()==='browser-profiles'){<button class="text-button" [disabled]="saving()" (click)="command('browser-profiles/'+row['id']+(row['busy']?'/close':'/open'))">{{row['busy']?'Закрыть':'Авторизоваться'}}</button><button class="text-button danger" [disabled]="saving()||row['busy']" (click)="removeBrowser(row)">Удалить</button>}
 @if(section()==='applications'&&!row['isTest']&&row['state']==='ReadyToSubmit'){<button class="text-button" [disabled]="saving()" (click)="recordManualSubmission(row)">Отметить отправленным вручную</button>}
-@if(section()==='applications'&&!row['isTest']&&row['state']==='ReadyToSubmit'&&vacancyUrl(row);as url){<a [href]="url" target="_blank" rel="noopener noreferrer">Открыть вакансию</a>}
+@if(section()==='applications'&&!row['isTest']&&row['state']==='ReadyToSubmit'&&vacancyUrl(row);as url){<button class="text-button" [disabled]="saving()" (click)="openBrowserDraft(row)">Заполнить в браузере</button><a [href]="url" target="_blank" rel="noopener noreferrer">Открыть вакансию</a>}
 @if(section()==='applications'&&row['isTest']&&row['state']==='ReadyToSubmit'){<button class="text-button" [disabled]="saving()" (click)="testSubmit(row)">Проверить тестовую отправку</button>}
 @if(section()==='applications'&&row['state']==='Submitting'){<button class="text-button" [disabled]="saving()" (click)="command('applications/'+row['id']+'/mark-unknown')">Зафиксировать неизвестный результат</button>}
 @if(section()==='applications'){@for(next of transitions(row);track next){<button class="text-button" [disabled]="saving()" (click)="command('applications/'+row['id']+'/transition',{state:next,revision:row['revision']})">{{next}}</button>}}
@@ -85,6 +85,26 @@
 @if(draftApplication){<section class="editor"><h2>Проверить письмо</h2><p>Проверьте факты и требования перед одобрением. AI-черновик не подтверждает опыт.</p><label>Текст письма<textarea [(ngModel)]="draftLetter" rows="12"></textarea></label><div class="form-actions"><button class="primary" [disabled]="saving()" (click)="saveLetter()">Сохранить письмо</button><button class="secondary" (click)="draftApplication=null">Закрыть</button></div></section>}
 @if(secretConnection){<section class="editor"><h2>Секреты: {{secretConnection['name']}}</h2><p>JSON-объект переменных окружения для stdio или HTTP-заголовков. Существующие значения не показываются. Сохранение заменит набор целиком.</p><label>Значения<textarea [(ngModel)]="secretJson" autocomplete="off" rows="5"></textarea></label><div class="form-actions"><button class="primary" [disabled]="saving()" (click)="saveSecrets()">Сохранить секреты</button><button class="secondary" (click)="secretConnection=null;secretJson='{}'">Отмена</button></div></section>}
 @if(importIntegration){<section class="editor"><h2>Импорт: {{importIntegration['name']}}</h2><p>Загрузите CSV или вставьте текст. Предварительный просмотр не создаёт вакансий. Подтверждение — в разделе «Импорт журналов».</p><label>Файл CSV<input type="file" accept=".csv,text/csv" (change)="selectCsv($event)"></label><label>Содержимое CSV<textarea [(ngModel)]="csvText" rows="8"></textarea></label><div class="form-actions"><button class="primary" [disabled]="saving()||!csvText" (click)="previewImport()">Предварительный просмотр</button><button class="secondary" (click)="importIntegration=null;csvText=''">Закрыть</button></div></section>}
+@if(browserDraft){
+<section class="editor">
+<h2>Заполнение формы отклика</h2>
+<p>В открытом окне браузера войдите в аккаунт при необходимости и откройте форму отклика в той же вкладке. Затем проверьте найденные поля.</p>
+<div class="form-actions"><button class="secondary" [disabled]="saving()" (click)="inspectBrowserDraft()">Проверить открытую форму</button><button class="secondary" (click)="browserDraft=null;browserPreview=null">Закрыть панель</button></div>
+@if(browserPreview;as preview){
+<p>Адрес формы: {{preview['url']}}</p>
+@if(preview['forms'].length){
+<label>Форма<select [(ngModel)]="browserFormIndex"><option [ngValue]="null">Выберите форму</option>@for(form of preview['forms'];track form.index){<option [ngValue]="form.index">{{form.fields.length}} полей · {{form.fields[0].label||browserFieldLabels[form.fields[0].kind]}} ({{form.index+1}})</option>}</select></label>
+@for(form of preview['forms'];track form.index){
+@if(form.index===browserFormIndex){
+<ul>@for(field of form.fields;track field.index){<li>{{browserFieldLabels[field.kind]}} {{field.label}}</li>}</ul>
+}}
+<label>Имя для формы<input [(ngModel)]="browserContactName" maxlength="250"></label>
+<p>Для поля email используется {{preview['contactEmail']||'адрес из профиля'}}. Приложите резюме, проверьте данные и отправьте форму в браузере вручную.</p>
+<div class="form-actions"><button class="primary" [disabled]="saving()||browserFormIndex===null" (click)="fillBrowserDraft()">Заполнить пустые поля</button></div>
+}@else{<p>Не найдена подходящая форма. Убедитесь, что открыт сам отклик.</p>}
+}
+</section>
+}
 @if(feedbackEvent){<section class="editor"><h2>Связать сообщение с откликом</h2><p>{{feedbackEvent['subject']}}</p><label>Отправленный отклик<select [(ngModel)]="feedbackApplicationId"><option value="">Выберите…</option>@for(a of feedbackApplications();track a['id']){<option [value]="a['id']">{{display('vacancyId',a['vacancyId'])}}</option>}</select></label><div class="form-actions"><button class="primary" [disabled]="saving()||!feedbackApplicationId" (click)="linkFeedback()">Подтвердить связь</button><button class="secondary" (click)="feedbackEvent=null">Закрыть</button></div></section>}
 @if(sheetIntegration){
 <section class="editor">
