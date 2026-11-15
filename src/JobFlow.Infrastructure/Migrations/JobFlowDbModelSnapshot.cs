@@ -357,11 +357,16 @@ namespace JobFlow.Infrastructure.Migrations
                     b.Property<Guid>("VacancyId")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("WorkflowDefinitionId")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ResumeVersionId");
 
                     b.HasIndex("VacancyId");
+
+                    b.HasIndex("WorkflowDefinitionId");
 
                     b.HasIndex("CandidateProfileId", "VacancyId")
                         .IsUnique();
@@ -575,9 +580,15 @@ namespace JobFlow.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("WorkflowDefinitionId")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CandidateProfileId");
+
+                    b.HasIndex("WorkflowDefinitionId")
+                        .IsUnique();
 
                     b.ToTable("Tasks");
                 });
@@ -673,6 +684,10 @@ namespace JobFlow.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -688,11 +703,33 @@ namespace JobFlow.Infrastructure.Migrations
                     b.Property<Guid>("JobPlatformId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Location")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("PublishedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RequiredSkills")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("SalaryMax")
+                        .HasColumnType("REAL");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Url")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WorkMode")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -730,6 +767,109 @@ namespace JobFlow.Infrastructure.Migrations
                     b.HasIndex("VacancyId");
 
                     b.ToTable("VacancyEvaluation");
+                });
+
+            modelBuilder.Entity("JobFlow.Domain.WorkflowDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CandidateProfileId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("EvaluationAgentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("JobPlatformId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LeaseToken")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LeaseUntil")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("LetterAgentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ResumeVersionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RulesJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CandidateProfileId");
+
+                    b.HasIndex("EvaluationAgentId");
+
+                    b.HasIndex("JobPlatformId");
+
+                    b.HasIndex("LetterAgentId");
+
+                    b.HasIndex("ResumeVersionId");
+
+                    b.ToTable("WorkflowDefinition");
+                });
+
+            modelBuilder.Entity("JobFlow.Domain.WorkflowRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CandidateProfileId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Error")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("FinishedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Prepared")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Rejected")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("WorkflowDefinitionId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkflowDefinitionId");
+
+                    b.ToTable("WorkflowRun");
                 });
 
             modelBuilder.Entity("JobFlow.Domain.AgentExecution", b =>
@@ -811,6 +951,11 @@ namespace JobFlow.Infrastructure.Migrations
                         .HasForeignKey("VacancyId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("JobFlow.Domain.WorkflowDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("WorkflowDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("JobFlow.Domain.PlatformAccount", b =>
@@ -858,6 +1003,11 @@ namespace JobFlow.Infrastructure.Migrations
                         .HasForeignKey("CandidateProfileId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("JobFlow.Domain.WorkflowDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("WorkflowDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("JobFlow.Domain.TaskRun", b =>
@@ -889,6 +1039,46 @@ namespace JobFlow.Infrastructure.Migrations
                     b.HasOne("JobFlow.Domain.Vacancy", null)
                         .WithMany()
                         .HasForeignKey("VacancyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("JobFlow.Domain.WorkflowDefinition", b =>
+                {
+                    b.HasOne("JobFlow.Domain.CandidateProfile", null)
+                        .WithMany()
+                        .HasForeignKey("CandidateProfileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("JobFlow.Domain.AgentProfile", null)
+                        .WithMany()
+                        .HasForeignKey("EvaluationAgentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("JobFlow.Domain.JobPlatform", null)
+                        .WithMany()
+                        .HasForeignKey("JobPlatformId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("JobFlow.Domain.AgentProfile", null)
+                        .WithMany()
+                        .HasForeignKey("LetterAgentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("JobFlow.Domain.ResumeVersion", null)
+                        .WithMany()
+                        .HasForeignKey("ResumeVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("JobFlow.Domain.WorkflowRun", b =>
+                {
+                    b.HasOne("JobFlow.Domain.WorkflowDefinition", null)
+                        .WithMany()
+                        .HasForeignKey("WorkflowDefinitionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

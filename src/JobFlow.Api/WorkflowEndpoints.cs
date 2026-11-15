@@ -1,0 +1,45 @@
+using JobFlow.Application;
+using JobFlow.Domain;
+using JobFlow.Infrastructure;
+using Microsoft.EntityFrameworkCore;
+namespace JobFlow.Api;
+public static class WorkflowEndpoints
+{
+    public static void MapWorkflowEndpoints(this WebApplication app)
+    {
+        app.MapGet("/api/workflows", async (JobFlowDb db) => await db.Set<WorkflowDefinition>().AsNoTracking().ToListAsync());
+        app.MapGet("/api/workflow-runs", async (JobFlowDb db) => await db.Set<WorkflowRun>().AsNoTracking().OrderByDescending(x => x.CreatedAt).Take(200).ToListAsync());
+        app.MapGet("/api/agent-templates", () => AgentTemplates.All);
+        app.MapPost("/api/workflows", async (WorkflowDefinition input, JobFlowDb db, JobSearchWorkflow workflow, CancellationToken ct) =>
+        {
+            await workflow.ValidateAsync(input, ct);
+            input.Id = Guid.NewGuid(); input.Revision = 1; input.LeaseToken = null; input.LeaseUntil = null;
+            db.Add(input);
+            db.Add(new ScheduledTask { CandidateProfileId = input.CandidateProfileId, Name = input.Name, Kind = "Workflow",
+                WorkflowDefinitionId = input.Id, Enabled = false, IntervalMinutes = 60, NextRunAt = DateTime.UtcNow.AddHours(1) });
+            await db.SaveChangesAsync(ct); return Results.Ok(input);
+        });
+        app.MapPut("/api/workflows/{id:guid}", async (Guid id, WorkflowDefinition input, JobFlowDb db, JobSearchWorkflow workflow, CancellationToken ct) =>
+        {
+            var row = await db.Set<WorkflowDefinition>().SingleAsync(x => x.Id == id, ct);
+            if (row.Revision != input.Revision || row.LeaseUntil > DateTime.UtcNow) return Results.Conflict(new { error = "Workflow changed or is running." });
+            if (row.CandidateProfileId != input.CandidateProfileId || row.JobPlatformId != input.JobPlatformId)
+                throw new ArgumentException("Create a new workflow to change its profile or platform.");
+            await workflow.ValidateAsync(input, ct);
+            input.Id = id; input.CreatedAt = row.CreatedAt; input.Revision++; input.LeaseToken = null; input.LeaseUntil = null;
+            db.Entry(row).CurrentValues.SetValues(input); await db.SaveChangesAsync(ct); return Results.Ok(row);
+        });
+        app.MapPost("/api/workflows/{id:guid}/run", async (Guid id, JobFlowDb db, CancellationToken ct) =>
+        {
+            var definition = await db.Set<WorkflowDefinition>().SingleAsync(x => x.Id == id, ct);
+            if (!definition.Enabled) throw new ArgumentException("Enable the workflow first.");
+            var task = await db.Tasks.SingleAsync(x => x.WorkflowDefinitionId == id, ct);
+            if (task.LeaseUntil > DateTime.UtcNow) return Results.Conflict(new { error = "Workflow is already running." });
+            task.RunRequested = true; await db.SaveChangesAsync(ct); return Results.Ok(new { queued = true, taskId = task.Id });
+        });
+        app.MapPut("/api/applications/{id:guid}/draft", async (Guid id, DraftInput input, IJobSearchWorkflow workflow, CancellationToken ct) =>
+        { await workflow.SaveDraftAsync(id, input.Letter, input.Revision, ct); return Results.Ok(new { saved = true }); });
+    }
+    public record DraftInput(string Letter, int Revision);
+}
+

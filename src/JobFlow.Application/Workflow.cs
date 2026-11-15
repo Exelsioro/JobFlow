@@ -14,7 +14,7 @@ public static class Workflow
         (ApplicationState.SubmissionUnknown, ApplicationState.Submitted or ApplicationState.Closed) => true,
         (ApplicationState.Submitted, ApplicationState.EmployerResponded or ApplicationState.Closed) => true,
         (ApplicationState.EmployerResponded, ApplicationState.Closed) => true,
-        (ApplicationState.Blocked, ApplicationState.Drafting or ApplicationState.Closed) => true,
+        (ApplicationState.Blocked, ApplicationState.Evaluating or ApplicationState.Drafting or ApplicationState.Closed) => true,
         _ => false
     };
     public static void Transition(JobApplication application, ApplicationState target)

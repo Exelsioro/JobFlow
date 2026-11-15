@@ -53,6 +53,7 @@ public class PlatformAccount : Entity
 }
 public class Vacancy : Entity
 {
+    public string RequiredSkills { get; set; } = ""; public string Location { get; set; } = ""; public string WorkMode { get; set; } = ""; public string Level { get; set; } = ""; public double? SalaryMax { get; set; } public string Currency { get; set; } = ""; public DateTime? PublishedAt { get; set; }
     public Guid JobPlatformId { get; set; }
     public string ExternalId { get; set; } = "";
     public string Title { get; set; } = "";
@@ -69,6 +70,7 @@ public class VacancyEvaluation : Entity
 public enum ApplicationState { Discovered, Evaluating, Rejected, Drafting, ReadyForReview, ReadyToSubmit, Submitting, SubmissionUnknown, Submitted, Blocked, EmployerResponded, Closed }
 public class JobApplication : Entity
 {
+    public Guid? WorkflowDefinitionId { get; set; }
     public Guid CandidateProfileId { get; set; }
     public Guid VacancyId { get; set; }
     public Guid ResumeVersionId { get; set; }
@@ -134,6 +136,7 @@ public class ToolConnection : Entity
 public class BrowserProfile : Entity { public string Name { get; set; } = ""; }
 public class ScheduledTask : Entity
 {
+    public Guid? WorkflowDefinitionId { get; set; }
     public Guid CandidateProfileId { get; set; }
     public string Name { get; set; } = "";
     public string Kind { get; set; } = "HealthCheck";

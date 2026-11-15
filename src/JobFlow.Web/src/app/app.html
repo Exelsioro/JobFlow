@@ -17,7 +17,8 @@
 <button (click)="navigate('tasks')"><span><strong>Фоновые задания</strong><small>Выберите действие и интервал запуска</small></span><span>Настроить →</span></button></section>
 <section class="boundary"><h2>Безопасная проверка</h2><p>Playwright заполняет изолированную форму искусственными данными и проверяет квитанцию. Внешних откликов не отправляет.</p><button class="secondary" [disabled]="saving()" (click)="command('browser/dry-run')">{{saving()?'Выполняется…':'Запустить браузерный dry-run'}}</button></section>}
 @if(editing()){
-<form class="editor" (ngSubmit)="save()"><h2>{{draft['id']?'Редактирование':'Новая запись'}}</h2><div class="form-grid">
+<form class="editor" (ngSubmit)="save()">
+@if(section()==='agents'){<div class="form-actions"><button type="button" class="secondary" (click)="template('Evaluation')">Шаблон оценки</button><button type="button" class="secondary" (click)="template('CoverLetter')">Шаблон письма</button></div>}<h2>{{draft['id']?'Редактирование':'Новая запись'}}</h2><div class="form-grid">
 @for(field of current().fields;track field.key){<label [class.wide]="field.type==='textarea'" [class.checkbox]="field.type==='checkbox'">
 @if(field.type!=='checkbox'){<span>{{field.label}}{{field.required?' *':''}}</span>}
 @switch(field.type){
@@ -41,7 +42,10 @@
 @for(row of rows();track row['versionId']||row['id']||row['name']){<tr>
 @for(col of current().columns;track col){<td [class.state]="col==='state'||col==='status'">{{display(col,row[col])}}</td>}
 <td class="actions">
-@if(['profiles','agents','providers'].includes(section())){<button class="text-button" (click)="edit(row)">Изменить</button>}
+@if(section()==='workflows'){<button class="text-button" [disabled]="saving()||!row['enabled']" (click)="command('workflows/'+row['id']+'/run')">Запустить workflow</button>}
+@if(section()==='evaluations'){<button class="text-button" (click)="result.set(row['resultJson'])">Обоснование</button>}
+@if(section()==='applications'){<button class="text-button" [disabled]="!['Drafting','ReadyForReview'].includes(row['state'])" (click)="editLetter(row)">Письмо</button>}
+@if(['profiles','agents','providers','workflows'].includes(section())){<button class="text-button" (click)="edit(row)">Изменить</button>}
 @if(section()==='agents'){<button class="text-button" (click)="copy(row)">Копировать</button><button class="text-button" (click)="activeAgent=row;agentInput=''" [disabled]="!row['enabled']">Запустить</button>}
 @if(section()==='providers'){<button class="text-button" [disabled]="saving()||!row['enabled']" (click)="command('providers/'+row['id']+'/test')">Проверить</button>}
 @if(section()==='resumes'){<a [href]="'/api/resumes/versions/'+row['versionId']+'/download'">Скачать</a>}
@@ -53,6 +57,7 @@
 </td></tr>}</tbody></table></div>}
 @else{<div class="empty"><h2>{{query()?'Совпадений нет':'Здесь пока нет записей'}}</h2><p>{{query()?'Попробуйте другой запрос.':'Данные появятся после настройки или первого запуска. Демонстрационные записи не добавляются автоматически.'}}</p></div>}}
 @if(activeAgent){<section class="editor"><h2>Запустить: {{activeAgent['name']}}</h2><p>Данные будут переданы провайдеру. Не включайте лишние персональные сведения.</p><label>Входные данные<textarea [(ngModel)]="agentInput" rows="5"></textarea></label><div class="form-actions"><button class="primary" (click)="execute()" [disabled]="saving()">{{saving()?'Выполняется…':'Передать данные и запустить'}}</button><button class="secondary" (click)="activeAgent=null">Закрыть</button></div></section>}
+@if(draftApplication){<section class="editor"><h2>Проверить письмо</h2><p>Проверьте факты и требования перед одобрением. AI-черновик не подтверждает опыт.</p><label>Текст письма<textarea [(ngModel)]="draftLetter" rows="12"></textarea></label><div class="form-actions"><button class="primary" [disabled]="saving()" (click)="saveLetter()">Сохранить письмо</button><button class="secondary" (click)="draftApplication=null">Закрыть</button></div></section>}
 @if(result()){<section class="result"><h2>Результат действия</h2><pre>{{result()}}</pre></section>}
 <footer>JobFlow · Локальный режим · Внешние подключения включаются пользователем</footer>
 </div></main></div>

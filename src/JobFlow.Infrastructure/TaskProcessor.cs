@@ -1,9 +1,10 @@
+using JobFlow.Application;
 using JobFlow.Domain;
 using Microsoft.EntityFrameworkCore;
 namespace JobFlow.Infrastructure;
 
 // Fixed UTC intervals avoid DST ambiguity; timezone is retained for display.
-public class TaskProcessor(JobFlowDb db)
+public class TaskProcessor(JobFlowDb db, IAgentExecutor? agents = null)
 {
     public async Task<bool> RunOneAsync(CancellationToken cancellationToken)
     {
@@ -15,7 +16,7 @@ public class TaskProcessor(JobFlowDb db)
         // Atomic compare-and-set works across API/worker processes.
         var claimed = await db.Tasks.Where(x => x.Id == candidate.Id && (x.RunRequested || (x.Enabled && x.NextRunAt <= now) || (x.LeaseUntil != null && x.LeaseUntil < now)) &&
             (x.LeaseUntil == null || x.LeaseUntil < now))
-            .ExecuteUpdateAsync(s => s.SetProperty(x => x.LeaseUntil, now.AddMinutes(2)).SetProperty(x => x.LeaseToken, token).SetProperty(x => x.RunRequested, false), cancellationToken);
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.LeaseUntil, now.AddMinutes(20)).SetProperty(x => x.LeaseToken, token).SetProperty(x => x.RunRequested, false), cancellationToken);
         if (claimed == 0) return false;
         await db.Runs.Where(x => x.ScheduledTaskId == candidate.Id && x.Status == "Running")
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, "Interrupted").SetProperty(x => x.FinishedAt, now)
@@ -25,11 +26,12 @@ public class TaskProcessor(JobFlowDb db)
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(45));
+            timeout.CancelAfter(TimeSpan.FromSeconds(candidate.Kind == "Workflow" ? 900 : 45));
             run.Message = candidate.Kind switch
             {
                 "HealthCheck" => await db.Database.CanConnectAsync(timeout.Token) ? "Database reachable." : throw new InvalidOperationException("Database unreachable."),
                 "BrowserDryRun" => await RunBrowser(timeout.Token),
+                "Workflow" => (await new JobSearchWorkflow(db, agents ?? new AgentExecutor(db, new CodexCliProvider())).RunAsync(candidate.WorkflowDefinitionId ?? throw new InvalidOperationException("Workflow configuration missing."), timeout.Token)).Status,
                 _ => throw new InvalidOperationException("Task kind is not supported.")
             };
             run.Status = "Succeeded";

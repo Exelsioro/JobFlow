@@ -8,8 +8,20 @@ type Section = {key:string;title:string;description:string;columns?:string[];fie
 export class App implements OnInit {
   section=signal('dashboard'); data=signal<Record<string,Row[]>>({}); status=signal<Row>({});
   loading=signal(false); saving=signal(false); error=signal(''); message=signal(''); result=signal(''); editing=signal(false); query=signal('');
-  private selectedProfile=signal(''); get profileId(){return this.selectedProfile();} set profileId(value:string){this.selectedProfile.set(value);this.resumeId='';this.activeAgent=null;this.editing.set(false);} draft:Row={}; file:File|null=null; resumeId=''; agentInput=''; activeAgent:Row|null=null;
+  private selectedProfile=signal(''); get profileId(){return this.selectedProfile();} set profileId(value:string){this.selectedProfile.set(value);this.resumeId='';this.activeAgent=null;this.draftApplication=null;this.editing.set(false);} draft:Row={}; file:File|null=null; resumeId=''; agentInput=''; activeAgent:Row|null=null;
+  draftApplication:Row|null=null; draftLetter='';
+  async editLetter(row:Row){this.draftApplication={...row};this.draftLetter=row['coverLetter'];}
+  async saveLetter(){if(!this.draftApplication)return;await this.action(async()=>{await this.api('applications/'+this.draftApplication!['id']+'/draft','PUT',{letter:this.draftLetter,revision:this.draftApplication!['revision']});this.draftApplication=null;this.message.set('Черновик сохранён.');});}
+  async template(kind:string){await this.action(async()=>{const all=await this.api('agent-templates');const value=all.find((x:Row)=>x['taskType']===kind);this.draft={...this.draft,...value,userPromptTemplate:'{{input}}'};});}
   sections:Section[]=[
+    {key:'workflows',title:'Workflow',description:'Поиск → оценка → письмо → ручная проверка. Без AI используются правила и письмо из фактов профиля. Выполняет Worker.',columns:['name','enabled','revision'],fields:[
+      {key:'name',label:'Название',required:true},{key:'candidateProfileId',label:'Профиль',type:'select',source:'profiles',required:true},
+      {key:'jobPlatformId',label:'Площадка',type:'select',source:'platforms',required:true},{key:'resumeVersionId',label:'Версия резюме',type:'select',source:'resumes',required:true},
+      {key:'evaluationAgentId',label:'AI-оценка (необязательно)',type:'select',source:'agents'},{key:'letterAgentId',label:'AI-письмо (необязательно)',type:'select',source:'agents'},
+      {key:'rulesJson',label:'Правила JSON: requiredSkills, locations, workModes, minimumSalary, currency, maxAgeDays, levels',type:'textarea',required:true},
+      {key:'enabled',label:'Разрешить выполнение workflow',type:'checkbox'}]},
+    {key:'workflow-runs',title:'История workflow',description:'Сохранённые этапы и результаты обработки.',columns:['workflowDefinitionId','status','stage','prepared','rejected','error','createdAt']},
+    {key:'evaluations',title:'Оценки вакансий',description:'Обоснования и неопределённости; оценка не заменяет проверку человеком.',columns:['candidateProfileId','vacancyId','createdAt']},
     {key:'dashboard',title:'Обзор',description:'Ваш поиск работы — в одном рабочем пространстве.'},
     {key:'profiles',title:'Профили кандидата',description:'Опыт, предпочтения и правила отдельного профиля.',columns:['name','email','skills','geography'],fields:[
       {key:'name',label:'Название профиля',required:true},{key:'email',label:'Email',type:'email'},
@@ -24,7 +36,9 @@ export class App implements OnInit {
     {key:'vacancies',title:'Вакансии',description:'Ручной импорт и предварительная оценка для выбранного профиля.',columns:['title','employer','externalId','createdAt'],fields:[
       {key:'jobPlatformId',label:'Площадка',type:'select',source:'platforms',required:true},{key:'externalId',label:'ID на площадке',required:true},
       {key:'title',label:'Должность',required:true},{key:'employer',label:'Работодатель',required:true},{key:'url',label:'Ссылка',type:'url'},
-      {key:'description',label:'Описание и требования',type:'textarea',required:true}]},
+      {key:'description',label:'Описание и требования',type:'textarea',required:true},
+      {key:'requiredSkills',label:'Обязательные навыки через запятую'},{key:'location',label:'Локация'},{key:'workMode',label:'Формат работы'},{key:'level',label:'Уровень'},
+      {key:'salaryMax',label:'Верхняя граница зарплаты',type:'number'},{key:'currency',label:'Валюта'},{key:'publishedAt',label:'Опубликована (ISO дата и время)'}]},
     {key:'applications',title:'Отклики',description:'Подготовка и проверка. Реальная отправка отключена.',columns:['vacancyId','candidateProfileId','state','revision'],fields:[
       {key:'candidateProfileId',label:'Профиль',type:'select',source:'profiles',required:true},{key:'vacancyId',label:'Вакансия',type:'select',source:'vacancies',required:true},
       {key:'resumeVersionId',label:'Версия резюме',type:'select',source:'resumes',required:true},{key:'coverLetter',label:'Сопроводительное письмо',type:'textarea'}]},
@@ -73,7 +87,7 @@ export class App implements OnInit {
     this.data.set(Object.fromEntries(entries));this.status.set(await this.api('status'));
     if(!this.profileId&&this.data()['profiles']?.length)this.profileId=this.data()['profiles'][0]['id'];
   }catch(e){this.error.set((e as Error).message);}finally{this.loading.set(false);}}
-  create(){this.draft={candidateProfileId:this.profileId,adapter:'search-only',kind:this.section()==='tasks'?'HealthCheck':'codex-cli',timeoutSeconds:120,
+  create(){this.draft={rulesJson:'{}',candidateProfileId:this.profileId,adapter:'search-only',kind:this.section()==='tasks'?'HealthCheck':'codex-cli',timeoutSeconds:120,
     intervalMinutes:60,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone,enabled:false,taskType:'Evaluation',userPromptTemplate:'{{input}}',
     systemPrompt:'Use only verified candidate facts. Clearly identify uncertainty.',
     outputSchema:'{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"],"additionalProperties":false}'};this.editing.set(true);this.error.set('');}
@@ -82,7 +96,7 @@ export class App implements OnInit {
   options(field:Field){let list=field.source?this.data()[field.source]??[]:[];if(field.source==='resumes')list=list.filter(x=>x['candidateProfileId']===this.draft['candidateProfileId']);return list;}
   optionId(field:Field,row:Row){return field.source==='resumes'?row['versionId']:row['id'];}
   optionName(row:Row){return(row['name']??row['title']??row['id'])+(row['version']?' · v'+row['version']:'');}
-  async save(){await this.action(async()=>{await this.api(this.section()+(this.draft['id']?'/'+this.draft['id']:''),this.draft['id']?'PUT':'POST',this.draft);this.editing.set(false);this.message.set('Сохранено.');});}
+  async save(){await this.action(async()=>{for(const key of ['evaluationAgentId','letterAgentId'])if(this.draft[key]==='')this.draft[key]=null;await this.api(this.section()+(this.draft['id']?'/'+this.draft['id']:''),this.draft['id']?'PUT':'POST',this.draft);this.editing.set(false);this.message.set('Сохранено.');});}
   chooseFile(event:Event){this.file=(event.target as HTMLInputElement).files?.[0]??null;}
   uniqueResumes(){return [...new Map((this.data()['resumes']??[]).filter(x=>x['candidateProfileId']===this.profileId).map(x=>[x['id'],x])).values()];}
   async upload(){if(!this.file||!this.profileId){this.error.set('Выберите профиль и PDF.');return;}await this.action(async()=>{
@@ -90,7 +104,7 @@ export class App implements OnInit {
     await this.api('resumes','POST',form);this.message.set('Версия резюме загружена.');this.file=null;});}
   async action(task:()=>Promise<void>){this.saving.set(true);this.error.set('');this.message.set('');try{await task();await this.refresh();}
     catch(e){this.error.set((e as Error).message);}finally{this.saving.set(false);}}
-  async command(path:string,body:unknown={}){await this.action(async()=>{const value=await this.api(path,'POST',body);this.result.set(JSON.stringify(value,null,2));this.message.set(path.startsWith('tasks/')&&path.endsWith('/run')?'Задание поставлено в очередь. Проверьте «Запуски заданий»; Worker должен быть запущен.':'Действие выполнено.');});}
+  async command(path:string,body:unknown={}){await this.action(async()=>{const value=await this.api(path,'POST',body);this.result.set(JSON.stringify(value,null,2));this.message.set((path.startsWith('tasks/')||path.startsWith('workflows/'))&&path.endsWith('/run')?'Задание поставлено в очередь. Проверьте «Запуски заданий»; Worker должен быть запущен.':'Действие выполнено.');});}
   async evaluate(row:Row){if(!this.profileId){this.error.set('Сначала выберите профиль.');return;}await this.command('vacancies/'+row['id']+'/evaluate',{profileId:this.profileId});}
   async execute(){if(this.activeAgent)await this.command('agents/'+this.activeAgent['id']+'/execute',{input:this.agentInput});}
   transitions(row:Row){const allowed:Record<string,string[]>={Discovered:['Evaluating'],Evaluating:['Rejected','Drafting','Blocked'],Drafting:['ReadyForReview','Blocked'],

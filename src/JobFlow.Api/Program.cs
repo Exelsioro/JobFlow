@@ -1,3 +1,4 @@
+using JobFlow.Api;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -13,6 +14,8 @@ builder.Services.ConfigureHttpJsonOptions(x => x.SerializerOptions.Converters.Ad
 builder.Services.AddDbContext<JobFlowDb>(x => x.UseSqlite(Storage.ConnectionString));
 builder.Services.AddScoped<IModelProvider, CodexCliProvider>();
 builder.Services.AddScoped<IAgentExecutor, AgentExecutor>();
+builder.Services.AddScoped<JobSearchWorkflow>();
+builder.Services.AddScoped<IJobSearchWorkflow>(sp => sp.GetRequiredService<JobSearchWorkflow>());
 builder.Services.AddSingleton<BrowserSessions>();
 builder.Services.AddProblemDetails();
 builder.Logging.ClearProviders();
@@ -247,6 +250,7 @@ app.MapGet("/api/integrations", () => new[] {
     new { name = "Gmail", status = "Not implemented", detail = "No email access." },
     new { name = "MCP", status = "Not implemented", detail = "Client and tool permissions pending." }
 });
+app.MapWorkflowEndpoints();
 app.MapFallbackToFile("index.html");
 await app.RunAsync();
 static void Required(string value, string field) { if (string.IsNullOrWhiteSpace(value) || value.Length > 500) throw new ArgumentException($"{field} is required (max 500 characters)."); }
