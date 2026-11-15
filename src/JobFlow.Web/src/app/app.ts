@@ -44,9 +44,9 @@ export class App implements OnInit {
   async testSubmit(row:Row){await this.command('applications/'+row['id']+'/test-submit',{idempotencyKey:'test-'+row['id'],revision:row['revision']});}
   async template(kind:string){await this.action(async()=>{const all=await this.api('agent-templates');const value=all.find((x:Row)=>x['taskType']===kind);this.draft={...this.draft,...value,userPromptTemplate:'{{input}}'};});}
   sections:Section[]=[
-    {key:'workflows',title:'Workflow',description:'Поиск → оценка → письмо → ручная проверка. Без AI используются правила и письмо из фактов профиля. Выполняет Worker.',columns:['name','enabled','revision'],fields:[
+    {key:'workflows',title:'Workflow',description:'Поиск → оценка → письмо → ручная проверка. Без AI используются правила и письмо из фактов профиля. Выполняет Worker.',columns:['name','jobPlatformIds','enabled','revision'],fields:[
       {key:'name',label:'Название',required:true},{key:'candidateProfileId',label:'Профиль',type:'select',source:'profiles',required:true},
-      {key:'jobPlatformId',label:'Площадка',type:'select',source:'platforms',required:true},{key:'resumeVersionId',label:'Версия резюме',type:'select',source:'resumes',required:true},
+      {key:'resumeVersionId',label:'Версия резюме',type:'select',source:'resumes',required:true},
       {key:'evaluationAgentId',label:'AI-оценка (необязательно)',type:'select',source:'agents'},{key:'letterAgentId',label:'AI-письмо (необязательно)',type:'select',source:'agents'},
       {key:'rulesJson',label:'Правила JSON: requiredSkills, locations, workModes, minimumSalary, currency, maxAgeDays, levels',type:'textarea',required:true},
       {key:'enabled',label:'Разрешить выполнение workflow',type:'checkbox'}]},
@@ -123,7 +123,7 @@ export class App implements OnInit {
     return undefined;
   }
   fieldOptions(field:Field){return (field.options??[]).filter(x=>x!=='Workflow'||!!this.draft['id']);}
-  labels:Record<string,string>={isPrimary:'Основное',jobPlatformId:'Площадка',browserProfileId:'Браузерный профиль',externalResumeId:'ID резюме',workflowDefinitionId:'Workflow',stage:'Этап',prepared:'Подготовлено',rejected:'Отклонено',transport:'Транспорт',hasSecrets:'Секреты',lastStatus:'Последняя проверка',importConfirmed:'Импорт подтверждён',integrationId:'Интеграция',rowCount:'Строк',added:'Добавлено',duplicates:'Дубликаты',conflicts:'Конфликты',sourceState:'Статус источника',sourceKey:'ID источника',subject:'Тема',receivedAt:'Получено',needsAction:'Требует внимания',jobApplicationId:'Отклик',outcome:'Результат',evidence:'Подтверждение',name:'Название',email:'Email',skills:'Навыки',geography:'География',version:'Версия',originalName:'Файл',createdAt:'Создано',
+  labels:Record<string,string>={jobPlatformIds:'Площадки',isPrimary:'Основное',jobPlatformId:'Площадка',browserProfileId:'Браузерный профиль',externalResumeId:'ID резюме',workflowDefinitionId:'Workflow',stage:'Этап',prepared:'Подготовлено',rejected:'Отклонено',transport:'Транспорт',hasSecrets:'Секреты',lastStatus:'Последняя проверка',importConfirmed:'Импорт подтверждён',integrationId:'Интеграция',rowCount:'Строк',added:'Добавлено',duplicates:'Дубликаты',conflicts:'Конфликты',sourceState:'Статус источника',sourceKey:'ID источника',subject:'Тема',receivedAt:'Получено',needsAction:'Требует внимания',jobApplicationId:'Отклик',outcome:'Результат',evidence:'Подтверждение',name:'Название',email:'Email',skills:'Навыки',geography:'География',version:'Версия',originalName:'Файл',createdAt:'Создано',
     url:'URL',adapter:'Адаптер',title:'Должность',employer:'Работодатель',externalId:'Внешний ID',vacancyId:'Вакансия',candidateProfileId:'Профиль',state:'Состояние',
     revision:'Ревизия',taskType:'Этап',enabled:'Включён',kind:'Тип',model:'Модель',busy:'Открыт',intervalMinutes:'Интервал, мин',nextRunAt:'Следующий запуск',
     status:'Статус',detail:'Возможности',scheduledTaskId:'Задание',message:'Результат',finishedAt:'Завершено',agentProfileId:'Агент',
@@ -153,6 +153,19 @@ export class App implements OnInit {
   options(field:Field){let list=field.source?this.data()[field.source]??[]:[];if(field.source==='resumes')list=list.filter(x=>x['candidateProfileId']===this.draft['candidateProfileId']);return list;}
   optionId(field:Field,row:Row){return field.source==='resumes'?row['versionId']:row['id'];}
   optionName(row:Row){return(row['name']??row['title']??row['id'])+(row['version']?' · v'+row['version']:'');}
+  platformName=(id:string)=>this.display('jobPlatformId',id);
+  selectedPlatforms(row:Row):string[]{
+    return row['jobPlatformIds']?.length ? row['jobPlatformIds'] : row['jobPlatformId'] ? [row['jobPlatformId']] : [];
+  }
+  togglePlatform(id:string,checked:boolean){
+    const ids=this.selectedPlatforms(this.draft);
+    this.draft['jobPlatformIds']=checked?[...ids,id]:ids.filter(value=>value!==id);
+    this.draft['jobPlatformId']=this.draft['jobPlatformIds'][0];
+  }
+  selectAllPlatforms(){
+    this.draft['jobPlatformIds']=(this.data()['platforms']??[]).map(row=>row['id']);
+    this.draft['jobPlatformId']=this.draft['jobPlatformIds'][0];
+  }
   async save(){await this.action(async()=>{for(const key of ['evaluationAgentId','letterAgentId','jobPlatformId','integrationId','browserProfileId'])if(this.draft[key]==='')this.draft[key]=null;await this.api(this.section()+(this.draft['id']?'/'+this.draft['id']:''),this.draft['id']?'PUT':'POST',this.draft);this.editing.set(false);this.message.set('Сохранено.');});}
   chooseFile(event:Event){this.file=(event.target as HTMLInputElement).files?.[0]??null;}
   uniqueResumes(){return [...new Map((this.data()['resumes']??[]).filter(x=>x['candidateProfileId']===this.profileId).map(x=>[x['id'],x])).values()];}

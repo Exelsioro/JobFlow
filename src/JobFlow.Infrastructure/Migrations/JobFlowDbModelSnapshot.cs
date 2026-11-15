@@ -982,6 +982,12 @@ namespace JobFlow.Infrastructure.Migrations
                     b.Property<Guid>("JobPlatformId")
                         .HasColumnType("TEXT");
 
+                    b.PrimitiveCollection<string>("JobPlatformIds")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("'[]'");
+
                     b.Property<string>("LeaseToken")
                         .HasColumnType("TEXT");
 

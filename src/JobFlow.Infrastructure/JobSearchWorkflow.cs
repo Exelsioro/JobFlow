@@ -21,16 +21,29 @@ public sealed class JobSearchWorkflow(JobFlowDb db, IAgentExecutor agents) : IJo
         db.Add(run); await db.SaveChangesAsync(ct);
         try
         {
-            var platform = await db.Platforms.SingleAsync(x => x.Id == definition.JobPlatformId, ct);
+            var platformIds = definition.SelectedPlatforms();
+            var platforms = await db.Platforms.Where(x => platformIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
             var profile = await db.Profiles.SingleAsync(x => x.Id == definition.CandidateProfileId, ct);
-            if (platform.Adapter is "test-form" or "headhunter" or "greenhouse")
+            var discoveryFailures = new List<string>();
+            using var http = PlatformDiscovery.CreateClient();
+            foreach (var id in platformIds)
             {
-                using var http = PlatformDiscovery.CreateClient();
-                await new PlatformDiscovery(db, http).ImportAsync(platform, ct);
+                var platform = platforms[id];
+                if (platform.Adapter == "search-only") continue;
+                try
+                {
+                    await new PlatformDiscovery(db, http).ImportAsync(platform, ct);
+                }
+                catch (Exception ex) when (!ct.IsCancellationRequested &&
+                    ex is HttpRequestException or OperationCanceledException or InvalidOperationException or ArgumentException or JsonException)
+                {
+                    discoveryFailures.Add(platform.Name);
+                }
             }
-            else if (platform.Adapter != "search-only") throw new InvalidOperationException("Discovery adapter is unsupported.");
-            // Search-only consumes explicitly imported vacancies; never pretends to scrape arbitrary URLs.
-            var vacancies = await db.Vacancies.Where(x => x.JobPlatformId == platform.Id).OrderBy(x => x.CreatedAt).ToListAsync(ct);
+
+            // Imported vacancies remain usable even when a live source is temporarily unavailable.
+            var vacancies = await db.Vacancies.Where(x => platformIds.Contains(x.JobPlatformId))
+                .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).ToListAsync(ct);
             var rules = JsonSerializer.Deserialize<SearchRules>(definition.RulesJson, Json) ?? new();
             var facts = new[] { profile.Experience, profile.Skills, profile.Education, profile.Languages }.Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
             foreach (var vacancy in vacancies)
@@ -43,7 +56,7 @@ public sealed class JobSearchWorkflow(JobFlowDb db, IAgentExecutor agents) : IJo
                 if (run.Prepared + run.Rejected >= 10) break;
                 if (application == null)
                 {
-                    application = new JobApplication { IsTest = platform.Adapter=="test-form", CandidateProfileId = profile.Id, VacancyId = vacancy.Id, ResumeVersionId = definition.ResumeVersionId, WorkflowDefinitionId = definitionId };
+                    application = new JobApplication { IsTest = platforms[vacancy.JobPlatformId].Adapter == "test-form", CandidateProfileId = profile.Id, VacancyId = vacancy.Id, ResumeVersionId = definition.ResumeVersionId, WorkflowDefinitionId = definitionId };
                     db.Add(application); await db.SaveChangesAsync(ct);
                 }
                 try
@@ -99,13 +112,19 @@ public sealed class JobSearchWorkflow(JobFlowDb db, IAgentExecutor agents) : IJo
                     await db.SaveChangesAsync(CancellationToken.None); throw;
                 }
             }
+            if (discoveryFailures.Count > 0)
+            {
+                run.Error = "Discovery failed: " + string.Join(", ", discoveryFailures);
+                throw new InvalidOperationException(run.Error);
+            }
             run.Status = "Succeeded"; run.Stage = "Review";
             return run;
         }
         catch (Exception ex)
         {
             run.Status = ex is OperationCanceledException ? "Interrupted" : "Failed";
-            run.Error = ex is OperationCanceledException ? "Cancelled or timed out." : "Workflow stage failed. Check configuration and agent execution history.";
+            if (string.IsNullOrEmpty(run.Error))
+                run.Error = ex is OperationCanceledException ? "Cancelled or timed out." : "Workflow stage failed. Check configuration and agent execution history.";
             throw;
         }
         finally
@@ -122,7 +141,11 @@ public sealed class JobSearchWorkflow(JobFlowDb db, IAgentExecutor agents) : IJo
         var rules = JsonSerializer.Deserialize<SearchRules>(definition.RulesJson, Json) ?? throw new ArgumentException("Rules must be an object.");
         if (rules.MinimumSalary < 0 || rules.MaxAgeDays < 1) throw new ArgumentException("Invalid salary or publication age.");
         if (rules.MinimumSalary.HasValue && string.IsNullOrWhiteSpace(rules.Currency)) throw new ArgumentException("Salary currency is required.");
-        if (!await db.Platforms.AnyAsync(x => x.Id == definition.JobPlatformId, ct)) throw new ArgumentException("Platform not found.");
+        var platforms = definition.SelectedPlatforms();
+        if (platforms.Length is < 1 or > 50 || platforms.Distinct().Count() != platforms.Length)
+            throw new ArgumentException("Select 1–50 distinct platforms.");
+        if (await db.Platforms.CountAsync(x => platforms.Contains(x.Id), ct) != platforms.Length)
+            throw new ArgumentException("A selected platform does not exist.");
         if (!await (from v in db.ResumeVersions join r in db.Resumes on v.ResumeId equals r.Id
             where v.Id == definition.ResumeVersionId && r.CandidateProfileId == definition.CandidateProfileId select v).AnyAsync(ct))
             throw new ArgumentException("Resume version must belong to the workflow candidate.");

@@ -3,7 +3,12 @@ public class WorkflowDefinition : Entity
 {
     public string Name { get; set; } = "";
     public Guid CandidateProfileId { get; set; }
+    // Legacy primary platform is retained for existing workflows and API clients.
     public Guid JobPlatformId { get; set; }
+    public Guid[] JobPlatformIds { get; set; } = [];
+    public Guid[] SelectedPlatforms() => JobPlatformIds.Length == 0 && JobPlatformId != Guid.Empty
+        ? [JobPlatformId]
+        : JobPlatformIds;
     public Guid ResumeVersionId { get; set; }
     public Guid? EvaluationAgentId { get; set; }
     public Guid? LetterAgentId { get; set; }

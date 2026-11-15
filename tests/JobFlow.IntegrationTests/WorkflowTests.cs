@@ -26,6 +26,38 @@ public class WorkflowTests
         db.ChangeTracker.Clear();
         Assert.Equal(2, await db.Set<WorkflowRun>().CountAsync());
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OneRunProcessesOnlySelectedPlatforms(bool failedSource)
+    {
+        await using var fixture = await Setup.Create();
+        var db = fixture.Db;
+        var selected = new JobPlatform { Name = "Second", Adapter = "search-only" };
+        var excluded = new JobPlatform { Name = "Outside selection" };
+        var unavailable = new JobPlatform { Name = "Unavailable", Adapter = "headhunter", SearchFilters = "" };
+        db.AddRange(selected, excluded, unavailable,
+            new Vacancy { JobPlatformId = selected.Id, ExternalId = "one", Title = "Second vacancy" },
+            new Vacancy { JobPlatformId = excluded.Id, ExternalId = "one", Title = "Excluded vacancy" });
+        fixture.Definition.JobPlatformIds = failedSource
+            ? [unavailable.Id, fixture.Definition.JobPlatformId, selected.Id]
+            : [fixture.Definition.JobPlatformId, selected.Id];
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var workflow = new JobSearchWorkflow(db, new FakeAgent());
+        if (failedSource)
+            await Assert.ThrowsAsync<InvalidOperationException>(() => workflow.RunAsync(fixture.Definition.Id, default));
+        else
+            await workflow.RunAsync(fixture.Definition.Id, default);
+
+        var run = await db.Set<WorkflowRun>().SingleAsync();
+        Assert.Equal(2, run.Prepared);
+        Assert.Equal(failedSource ? "Failed" : "Succeeded", run.Status);
+        Assert.Equal(failedSource ? "Discovery failed: Unavailable" : "", run.Error);
+        Assert.Equal(2, await db.Applications.CountAsync());
+        Assert.False(await db.Applications.AnyAsync(app => db.Vacancies.Any(v => v.Id == app.VacancyId && v.JobPlatformId == excluded.Id)));
+    }
+
     [Fact] public async Task AIStagesUseConfiguredAgentsAndFailureCanResume()
     {
         await using var fixture = await Setup.Create();

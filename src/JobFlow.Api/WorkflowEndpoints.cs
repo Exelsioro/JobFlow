@@ -16,6 +16,7 @@ public static class WorkflowEndpoints
         app.MapPost("/api/workflows", async (WorkflowDefinition input, JobFlowDb db, JobSearchWorkflow workflow, CancellationToken ct) =>
         {
             await workflow.ValidateAsync(input, ct);
+            input.JobPlatformId = input.SelectedPlatforms()[0];
             input.Id = Guid.NewGuid(); input.Revision = 1; input.LeaseToken = null; input.LeaseUntil = null;
             db.Add(input);
             db.Add(new ScheduledTask { CandidateProfileId = input.CandidateProfileId, Name = input.Name, Kind = "Workflow",
@@ -26,9 +27,10 @@ public static class WorkflowEndpoints
         {
             var row = await db.Set<WorkflowDefinition>().SingleAsync(x => x.Id == id, ct);
             if (row.Revision != input.Revision || row.LeaseUntil > DateTime.UtcNow) return Results.Conflict(new { error = "Workflow changed or is running." });
-            if (row.CandidateProfileId != input.CandidateProfileId || row.JobPlatformId != input.JobPlatformId)
-                throw new ArgumentException("Create a new workflow to change its profile or platform.");
+            if (row.CandidateProfileId != input.CandidateProfileId)
+                throw new ArgumentException("Create a new workflow to change its profile.");
             await workflow.ValidateAsync(input, ct);
+            input.JobPlatformId = input.SelectedPlatforms()[0];
             input.Id = id; input.CreatedAt = row.CreatedAt; input.Revision++; input.LeaseToken = null; input.LeaseUntil = null;
             db.Entry(row).CurrentValues.SetValues(input); await db.SaveChangesAsync(ct); return Results.Ok(row);
         });

@@ -26,6 +26,7 @@ public class JobFlowDb(DbContextOptions<JobFlowDb> options) : DbContext(options)
         b.Entity<WorkflowDefinition>().HasOne<ResumeVersion>().WithMany().HasForeignKey(x => x.ResumeVersionId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<WorkflowDefinition>().HasOne<AgentProfile>().WithMany().HasForeignKey(x => x.EvaluationAgentId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<WorkflowDefinition>().HasOne<AgentProfile>().WithMany().HasForeignKey(x => x.LetterAgentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<WorkflowDefinition>().Property(x => x.JobPlatformIds).HasDefaultValueSql("'[]'");
         b.Entity<WorkflowDefinition>().Property(x => x.Revision).IsConcurrencyToken();
         b.Entity<WorkflowRun>().HasOne<WorkflowDefinition>().WithMany().HasForeignKey(x => x.WorkflowDefinitionId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<ScheduledTask>().HasOne<WorkflowDefinition>().WithMany().HasForeignKey(x => x.WorkflowDefinitionId).OnDelete(DeleteBehavior.Restrict);

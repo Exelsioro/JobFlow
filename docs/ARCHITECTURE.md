@@ -4,7 +4,7 @@ Domain holds entities, ownership IDs and states. Application holds contracts, ru
 
 ## Workflow and consistency
 
-WorkflowDefinition binds a profile, platform, resume version, rules and optional evaluator/writer. A conditional lease prevents overlapping runs. Discovery uses a synthetic Playwright source, imported vacancies or read-only HeadHunter and Greenhouse APIs. Up to ten applications per run pass through persisted evaluation and drafting stages. Existing reviewed/terminal applications and imported historical submissions are skipped.
+WorkflowDefinition binds a profile, a selection of platforms, a resume version, rules and optional evaluator/writer. A conditional lease prevents overlapping runs. Discovery uses a synthetic Playwright source, imported vacancies or read-only HeadHunter and Greenhouse APIs. Up to ten applications per run pass through persisted evaluation and drafting stages. Existing reviewed/terminal applications and imported historical submissions are skipped.
 
 Unique keys protect platform/external vacancy ID, profile/vacancy application, resume/version, attempt idempotency and source feedback identity. Application revision, workflow revision and agent version prevent stale changes. AI output is schema-validated; claimed matching skills and writer facts must come from supplied evidence. Review remains mandatory.
 

@@ -99,26 +99,36 @@ try
     var version=await uploadResponse.Content.ReadFromJsonAsync<JsonElement>();
     var platformResponse=await http.PostAsJsonAsync("/api/platforms",new{name="Workflow fixture",url="https://example.invalid",adapter="test-form"});
     platformResponse.EnsureSuccessStatusCode();var platform=await platformResponse.Content.ReadFromJsonAsync<JsonElement>();
-    var definitionResponse=await http.PostAsJsonAsync("/api/workflows",new{name="Full preparation",candidateProfileId=profileId,jobPlatformId=platform.GetProperty("id").GetGuid(),resumeVersionId=version.GetProperty("id").GetGuid(),enabled=true,rulesJson="{}"});
-    definitionResponse.EnsureSuccessStatusCode();
+    var importedResponse=await http.PostAsJsonAsync("/api/platforms",new{name="Imported board",url="https://example.invalid",adapter="search-only"});
+    importedResponse.EnsureSuccessStatusCode();
+    var imported=await importedResponse.Content.ReadFromJsonAsync<JsonElement>();
+    (await http.PostAsJsonAsync("/api/vacancies",new{jobPlatformId=imported.GetProperty("id").GetGuid(),externalId="imported",title="Imported synthetic vacancy"})).EnsureSuccessStatusCode();
     await page.ReloadAsync();
     await page.GetByLabel("Рабочий профиль").SelectOptionAsync(profileId.ToString());
     await page.GetByRole(AriaRole.Button,new(){Name="Workflow",Exact=true}).ClickAsync();
+    await page.GetByRole(AriaRole.Button,new(){Name="Создать",Exact=true}).ClickAsync();
+    await page.GetByLabel("Название").FillAsync("Full preparation");
+    await page.GetByLabel("Версия резюме").SelectOptionAsync(version.GetProperty("id").GetString()!);
+    await page.GetByLabel("Разрешить выполнение workflow").CheckAsync();
+    await page.GetByRole(AriaRole.Button,new(){Name="Выбрать все площадки",Exact=true}).ClickAsync();
+    await page.GetByRole(AriaRole.Button,new(){Name="Сохранить",Exact=true}).ClickAsync();
+    await page.GetByRole(AriaRole.Cell,new(){Name="Workflow fixture, Imported board",Exact=true}).WaitForAsync();
     await page.GetByRole(AriaRole.Button,new(){Name="Запустить workflow",Exact=true}).ClickAsync();
     var prepared=false;
     for(var i=0;i<60;i++){
         var applications=await http.GetFromJsonAsync<JsonElement[]>("/api/applications");
-        if(applications!.Any(x=>x.GetProperty("state").GetString()=="ReadyForReview")){prepared=true;break;}
+        if(applications!.Count(x=>x.GetProperty("state").GetString()=="ReadyForReview")==2){prepared=true;break;}
         await Task.Delay(500);
     }
     if(!prepared)throw new InvalidOperationException("Workflow did not prepare application.");
     await page.ReloadAsync();
     await page.GetByLabel("Рабочий профиль").SelectOptionAsync(profileId.ToString());
     await page.GetByRole(AriaRole.Button,new(){Name="Отклики",Exact=true}).ClickAsync();
-    await page.GetByRole(AriaRole.Button,new(){Name="Письмо",Exact=true}).ClickAsync();
+    var testRow=page.GetByRole(AriaRole.Row).Filter(new(){HasText="TEST — Software engineer"});
+    await testRow.GetByRole(AriaRole.Button,new(){Name="Письмо",Exact=true}).ClickAsync();
     await page.GetByLabel("Текст письма").FillAsync("Reviewed synthetic C# experience.");
     await page.GetByRole(AriaRole.Button,new(){Name="Сохранить письмо",Exact=true}).ClickAsync();
-    await page.GetByRole(AriaRole.Button,new(){Name="ReadyToSubmit",Exact=true}).ClickAsync();
+    await testRow.GetByRole(AriaRole.Button,new(){Name="ReadyToSubmit",Exact=true}).ClickAsync();
     await page.GetByRole(AriaRole.Button,new(){Name="Проверить тестовую отправку",Exact=true}).ClickAsync();
     await page.GetByRole(AriaRole.Cell,new(){Name="Submitted",Exact=true}).WaitForAsync();
     await page.GetByRole(AriaRole.Button,new(){Name="Попытки отправки",Exact=true}).ClickAsync();

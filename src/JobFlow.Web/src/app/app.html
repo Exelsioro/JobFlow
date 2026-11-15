@@ -29,7 +29,18 @@
 @case('checkbox'){<input type="checkbox" [name]="field.key" [(ngModel)]="draft[field.key]"><span>{{field.label}}</span>}
 @default{<input [type]="field.type||'text'" [name]="field.key" [(ngModel)]="draft[field.key]" [required]="!!field.required">}
 }</label>}
-</div><div class="form-actions"><button type="submit" class="primary" [disabled]="saving()">{{saving()?'Сохранение…':'Сохранить'}}</button><button type="button" class="secondary" (click)="editing.set(false)">Отмена</button></div></form>}
+@if(section()==='workflows'){
+<fieldset class="wide platform-picker">
+<legend>Площадки запуска</legend>
+@if(data()['platforms']?.length){
+<button type="button" class="secondary" (click)="selectAllPlatforms()">Выбрать все площадки</button>
+@for(platform of data()['platforms'];track platform['id']){
+<label class="checkbox"><input type="checkbox" [checked]="selectedPlatforms(draft).includes(platform['id'])" (change)="togglePlatform(platform['id'],$any($event.target).checked)"><span>{{platform['name']}} · {{platform['adapter']}}</span></label>
+}
+}@else{<p>Добавьте площадки в одноимённом разделе.</p>}
+</fieldset>
+}
+</div><div class="form-actions"><button type="submit" class="primary" [disabled]="saving()||(section()==='workflows'&&!selectedPlatforms(draft).length)">{{saving()?'Сохранение…':'Сохранить'}}</button><button type="button" class="secondary" (click)="editing.set(false)">Отмена</button></div></form>}
 @if(section()==='resumes'){
 <form class="upload" (ngSubmit)="upload()"><h2>Загрузить PDF</h2><p>Используется профиль, выбранный вверху. Максимум — 10 МБ.</p>
 <label>Резюме<select name="resumeId" [(ngModel)]="resumeId"><option value="">Создать новое резюме</option>@for(r of uniqueResumes();track r['id']){@if(r['candidateProfileId']===profileId){<option [value]="r['id']">{{r['name']}} · новая версия</option>}}</select></label>
@@ -40,7 +51,7 @@
 <div class="list-heading"><h2>Записи <span class="count">{{rows().length}}</span></h2><label class="search"><span class="sr-only">Поиск записей</span><input type="search" placeholder="Поиск по записям" [ngModel]="query()" (ngModelChange)="query.set($event)"></label></div>
 @if(rows().length){<div class="table-wrap"><table><thead><tr>@for(col of current().columns;track col){<th>{{labels[col]||col}}</th>}<th><span class="sr-only">Действия</span></th></tr></thead><tbody>
 @for(row of rows();track row['versionId']||row['id']||row['name']){<tr>
-@for(col of current().columns;track col){<td [class.state]="col==='state'||col==='status'">{{display(col,row[col])}}</td>}
+@for(col of current().columns;track col){<td [class.state]="col==='state'||col==='status'">{{col==='jobPlatformIds'?selectedPlatforms(row).map(platformName).join(', '):display(col,row[col])}}</td>}
 <td class="actions">
 @if(section()==='integrations'){
  @if(row['kind']==='csv'){<button class="text-button" (click)="importIntegration=row;csvText=''">Импорт CSV</button>}
