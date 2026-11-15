@@ -21,7 +21,7 @@ Online SQLite backup automation is not implemented. Do not copy only an active d
 3. Restore the data directory and set JOBFLOW_DATA_DIR for both processes.
 4. Start API; migrations apply automatically. Back up before upgrading to a newer commit.
 5. Start Worker and inspect interrupted runs.
-6. Reauthenticate Codex CLI and websites manually. Browser cookies may not be portable across operating systems; do not assume Windows cookies can be decrypted on Linux.
+6. Re-enter integration/MCP secrets after migration to another Windows account or machine: DPAPI-protected keys are not portable. Keep the full secrets directory in backups for same-account restoration. On Unix protect the key directory with OS permissions; no external KMS is configured. Reauthenticate Codex CLI and websites manually. Browser cookies may not be portable across operating systems; do not assume Windows cookies can be decrypted on Linux.
 7. Confirm real submission is still disabled and test a HealthCheck and isolated browser form.
 
 Headless fixtures support Linux in source. Manual browser login requires a desktop/display on the server. Linux and service-manager deployments have not yet been exercised. Add systemd/Windows Service packaging in a later iteration; the business scheduler remains inside JobFlow.

@@ -1,46 +1,35 @@
 # Architecture and boundaries
 
-## Current implementation
+Domain holds entities, ownership IDs and states. Application holds contracts, rules, templates and transition policy. Infrastructure implements EF SQLite, durable workflow, CLI/browser/MCP, imports and task processing. API serves localhost operations and Angular. Worker runs separately against the same JOBFLOW_DATA_DIR.
 
-Domain contains entities, ownership IDs and application states. Application contains the transition policy, conservative evaluator and integration contracts. Infrastructure contains EF Core, migrations, CLI/browser adapters and the persistent task processor. API exposes local HTTP operations. Angular uses the same-origin API. Worker is a separate executable.
+## Workflow and consistency
 
-SQLite is authoritative. CSV export is an optional projection. No external account or seeded candidate is required. User is created lazily when the first candidate profile is saved, without personal seed data.
+WorkflowDefinition binds a profile, platform, resume version, rules and optional evaluator/writer. A conditional lease prevents overlapping runs. Discovery uses a synthetic Playwright source or imported vacancies. Up to ten applications per run pass through persisted evaluation and drafting stages. Existing reviewed/terminal applications and imported historical submissions are skipped.
 
-Persistence uses separate tables for all named concepts, including future integration/account/feedback concepts. **A table or interface is not an implemented feature.** See PROGRESS.md.
+Unique keys protect platform/external vacancy ID, profile/vacancy application, resume/version, attempt idempotency and source feedback identity. Application revision, workflow revision and agent version prevent stale changes. AI output is schema-validated; claimed matching skills and writer facts must come from supplied evidence. Review remains mandatory.
 
-## Invariants
+TestSubmissionService commits Pending and Submitting before invoking the isolated provider. Confirmation produces TestConfirmed/Submitted with IsTest=true; failure produces SubmissionUnknown. The same key returns the existing attempt, never repeats the side effect. A crash can leave Pending; explicit mark-unknown records uncertainty. Real platform submission is disabled.
 
-- Unique platform + external vacancy ID.
-- Unique candidate profile + vacancy application.
-- Unique resume + version.
-- Unique application attempt idempotency key and employer source event key (future adapters must use them).
-- A new application references a resume version owned by the same candidate profile.
-- Workflow transitions use an explicit allowed-edge table. Unknown submission cannot be retried.
-- Application Revision and AgentProfile Version are optimistic concurrency tokens.
-- Manual state changes cannot assert Submitting, Submitted, SubmissionUnknown or EmployerResponded.
-- ReadyToSubmit requires a cover letter and no unconfirmed external-journal import.
-- No executable adapter sends real applications.
+## Worker
 
-## Scheduler
+TaskProcessor claims a 20-minute lease atomically. Configured timeout is 5–900 seconds, below the lease duration; no lease renewal is needed for supported bounded runs. A separate context polls cancellation every 300 ms. Completion and release commit together. Failed jobs retry with 1/2/4/8/16-minute backoff up to configured MaxRetries. Expired Running jobs become Interrupted and are reclaimed. Workflow application state permits safe resumption.
 
-Worker polls SQLite. A conditional SQL update acquires a two-minute lease with a unique token. Normal jobs have a 45-second deadline. Completion and lease release commit together. Expired leases are reclaimed; prior Running history becomes Interrupted. Missed periodic intervals coalesce into one run rather than a burst.
+Dispatch: HealthCheck, BrowserDryRun, Workflow, Integration. Pause disables future scheduling; Stop also requests cancellation. Periodic intervals coalesce. Timezone is validated metadata; schedule arithmetic is UTC intervals, not cron. Worker process heartbeat/service packaging is not implemented.
 
-Manual RunRequested is separate from Enabled. Running a paused task does not enable its repeating schedule. Pause removes queued requests and disables future periodic starts; it does not cancel an already executing task. Per-job stop, configurable retries, cron, lease renewal and arbitrary long-running workflows remain unimplemented.
+## AI and MCP
 
-Only HealthCheck and BrowserDryRun are dispatched. No background search/AI/email workflow is implied.
+Codex CLI uses ArgumentList and stdin, output schema and process-tree timeout. Model IDs are user supplied. The host performs MCP calls before AI according to static tool bindings. Official SDK handles stdio/HTTP. Connections must be enabled; calls require explicit name allowlist and readOnlyHint. Tool output is untrusted input, capped in size. No MCP server or model-selected write tool execution is implemented.
 
-## AI
+## Imports and feedback
 
-Codex uses ProcessStartInfo.ArgumentList and stdin instead of shell interpolation. Exit success is necessary but insufficient: output file must exist, parse as JSON and pass the configured schema. CLI timeout kills the process tree. Failed executions retain a sanitized diagnostic and configuration snapshot. Outputs are returned to the caller without persistence by default.
+JournalService stages CSV rows, validates mapping and confirms them transactionally. Vacancy conflicts follow keep-local/update-vacancies. HistoricalApplication stores source status separately from locally executed attempts and blocks resubmission. Unconfirmed journal imports block approval/submission.
 
-Model IDs are user supplied. Other provider kinds are rejected instead of pretending to work. Provider enablement is explicit authorization for external model calls, not permission to submit applications.
+RemoteIntegrationService uses fixed Google API hosts, no redirect following, 90-second timeout and bounded responses. Sheets becomes a staged import. Gmail reads metadata/snippet, JSON feedback uses source event IDs. Feedback is explicitly linked to an application of the same profile; this records EmployerInteraction and EmployerResponded. No outbound mail or calendar writes occur.
 
-## Local security
+## Local security and storage
 
-API binds 127.0.0.1:5271, validates Host and requires a custom header on mutating API calls. There is no permissive CORS policy. This guards against ordinary cross-site form requests; it is not authentication against local processes.
+API binds 127.0.0.1:5271, validates Host and requires X-JobFlow-Client for mutations without permissive CORS. This is not authentication against local processes; remote hosting requires authentication/TLS.
 
-Do not expose this build to a LAN/reverse proxy. Authentication and transport security must be added before remote access. Data/cookies are protected by the OS user account, not encrypted by JobFlow. No generalized secret store or OAuth vault is implemented. Browser profiles are dedicated directories; Chrome profiles are never copied.
+Secrets are separate encrypted files via Data Protection; Windows keys use DPAPI. Unix keys rely on filesystem permissions. Database, CVs and browser profiles rely on OS permissions; full data encryption and retention policies are not implemented. Configuration snapshots may contain user-authored prompt text, so never put tokens in prompts. Only trusted MCP executables should be configured.
 
-## Known architecture debt
-
-HTTP handlers still contain some orchestration and persistence details; move them into Application use cases before adding an MCP server or additional transport. There is no complete adapter registry, transactional outbox, external journal conflict engine or workflow orchestration engine. Application ownership currently assumes one local owner. PostgreSQL migration needs a provider-specific migration assembly and concurrency verification; Domain/Application have no SQLite dependencies.
+Migrations apply on startup. Back up the stopped data directory before upgrading: SQLite table rebuilds may not be fully transactional. Google live credentials, Linux deployment, PostgreSQL and cross-machine restore remain unverified.
