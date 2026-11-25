@@ -21,16 +21,36 @@ public class JobFlowDb(DbContextOptions<JobFlowDb> options) : DbContext(options)
     {
         foreach (var type in typeof(Entity).Assembly.GetTypes().Where(t => t.IsSubclassOf(typeof(Entity)) && !t.IsAbstract))
             b.Entity(type);
+        b.Entity<ServiceState>().HasIndex(x => x.Role).IsUnique();
+        b.Entity<JobPlatform>().Property(x => x.BrowserMode).HasDefaultValue("inherit");
+        b.Entity<AgentProfile>().Property(x => x.ResponseLanguage).HasDefaultValue("ru");
+        b.Entity<ResumeVersion>().HasOne<ResumeVersion>().WithMany().HasForeignKey(x => x.SourceResumeVersionId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<ResumeVersion>().HasOne<Vacancy>().WithMany().HasForeignKey(x => x.VacancyId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<ResumeVersion>().HasOne<AgentExecution>().WithMany().HasForeignKey(x => x.AgentExecutionId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<DossierProposal>().HasOne<CandidateProfile>().WithMany().HasForeignKey(x => x.CandidateProfileId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<DossierProposal>().HasOne<ResumeVersion>().WithMany().HasForeignKey(x => x.ResumeVersionId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<DossierProposal>().HasOne<AgentExecution>().WithMany().HasForeignKey(x => x.AgentExecutionId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<Notification>().HasOne<CandidateProfile>().WithMany().HasForeignKey(x => x.CandidateProfileId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<WorkflowDefinition>().HasOne<AgentProfile>().WithMany().HasForeignKey(x => x.ResumeAgentId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<WorkflowDefinition>().HasOne<CandidateProfile>().WithMany().HasForeignKey(x => x.CandidateProfileId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<WorkflowDefinition>().HasOne<JobPlatform>().WithMany().HasForeignKey(x => x.JobPlatformId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<WorkflowDefinition>().HasOne<ResumeVersion>().WithMany().HasForeignKey(x => x.ResumeVersionId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<WorkflowDefinition>().HasOne<AgentProfile>().WithMany().HasForeignKey(x => x.EvaluationAgentId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<WorkflowDefinition>().HasOne<AgentProfile>().WithMany().HasForeignKey(x => x.LetterAgentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<WorkflowDefinition>().HasOne<AgentProfile>().WithMany().HasForeignKey(x => x.BrowserAgentId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<WorkflowDefinition>().HasOne<BrowserProfile>().WithMany().HasForeignKey(x => x.BrowserProfileId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<WorkflowDefinition>().Property(x => x.JobPlatformIds).HasDefaultValueSql("'[]'");
+        b.Entity<WorkflowDefinition>().Property(x => x.MaxVacanciesPerPlatform).HasDefaultValue(50);
+        b.Entity<WorkflowDefinition>().Property(x => x.MaxVacancyChecksPerRun).HasDefaultValue(10);
+        b.Entity<WorkflowDefinition>().Property(x => x.VacancySource).HasDefaultValue("search");
+        b.Entity<WorkflowDefinition>().Property(x => x.ApplicationStatusFilter).HasDefaultValue("pending");
+        b.Entity<WorkflowDefinition>().Property(x => x.EvaluationResultFilter).HasDefaultValue("all");
         b.Entity<WorkflowDefinition>().Property(x => x.Revision).IsConcurrencyToken();
         b.Entity<WorkflowRun>().HasOne<WorkflowDefinition>().WithMany().HasForeignKey(x => x.WorkflowDefinitionId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<ScheduledTask>().HasOne<WorkflowDefinition>().WithMany().HasForeignKey(x => x.WorkflowDefinitionId).OnDelete(DeleteBehavior.Restrict);
-        b.Entity<ScheduledTask>().HasIndex(x => x.WorkflowDefinitionId).IsUnique();
+        b.Entity<ScheduledTask>().HasIndex(x => x.WorkflowDefinitionId).IsUnique().HasFilter("\"Kind\" = 'Workflow'");
+        b.Entity<ScheduledTask>().HasIndex(x => new { x.CandidateProfileId, x.VacancyId }).IsUnique().HasFilter("\"Kind\" = 'PrepareApplication'");
+        b.Entity<ScheduledTask>().HasOne<Vacancy>().WithMany().HasForeignKey(x => x.VacancyId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<JobApplication>().HasOne<WorkflowDefinition>().WithMany().HasForeignKey(x => x.WorkflowDefinitionId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<ScheduledTask>().HasOne<Integration>().WithMany().HasForeignKey(x=>x.IntegrationId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<Integration>().HasOne<JobPlatform>().WithMany().HasForeignKey(x=>x.JobPlatformId).OnDelete(DeleteBehavior.Restrict);

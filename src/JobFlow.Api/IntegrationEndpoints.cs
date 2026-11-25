@@ -20,16 +20,38 @@ public static class IntegrationEndpoints
             return Results.Redirect("/#integrations");
         });
         app.MapPost("/api/integrations/{id:guid}/sheets/preview", async (Guid id, SheetTarget input, SheetsWriteBack writer, CancellationToken ct) =>
-            Results.Ok(await writer.PreviewAsync(id, input.Tab, ct)));
+            Results.Ok(await writer.PreviewAsync(id, input.Tab, ct,
+                platformIds: input.PlatformIds, allPlatforms: input.AllPlatforms, spreadsheet: input.Spreadsheet, startNewJournal: input.StartNewJournal)));
         app.MapPost("/api/integrations/{id:guid}/sheets/confirm", async (Guid id, SheetTarget input, SheetsWriteBack writer, CancellationToken ct) =>
         {
             if (input.Digest?.Length != 64) throw new ArgumentException("Preview the export before confirming.");
-            var result = await writer.PreviewAsync(id, input.Tab, ct, input.Digest);
+            var result = await writer.PreviewAsync(id, input.Tab, ct, input.Digest,
+                input.PlatformIds, input.AllPlatforms, input.Spreadsheet, input.StartNewJournal);
             return Results.Ok(new { exported = result.Rows.Length - 1, result.Tab });
         });
-        app.MapGet("/api/integrations", async (JobFlowDb db, SecretStore secrets) =>
-            (await db.Set<Integration>().AsNoTracking().ToListAsync()).Select(x => new { x.Id,x.Name,x.Kind,x.CandidateProfileId,x.JobPlatformId,
-                x.MappingJson,x.ConflictPolicy,x.MailAgentId,x.ImportConfirmed,x.LastStatus,x.LastCheckedAt,x.Endpoint,x.Enabled,hasSecrets=secrets.Exists(x.Id) }));
+        app.MapGet("/api/integrations", async (JobFlowDb db, SecretStore secrets, CancellationToken ct) =>
+        {
+            var pendingIds = (await JournalApproval.Pending(db).Select(x => x.Id).ToListAsync(ct)).ToHashSet();
+            return (await db.Set<Integration>().AsNoTracking().ToListAsync(ct)).Select(x => new { x.Id,x.Name,x.Kind,x.CandidateProfileId,x.JobPlatformId,
+                x.MappingJson,x.ConflictPolicy,x.MailAgentId,x.Instructions,x.ImportConfirmed,x.LastStatus,x.LastCheckedAt,x.Endpoint,x.Enabled,
+                hasSecrets=secrets.Exists(x.Id),journalApprovalPending=pendingIds.Contains(x.Id) });
+        });
+        app.MapPost("/api/integrations/{id:guid}/no-prior-journal", async (Guid id, JobFlowDb db, CancellationToken ct) =>
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            var source = await db.Set<Integration>().SingleOrDefaultAsync(x => x.Id == id, ct);
+            if (source == null) return Results.NotFound();
+            if (source.Kind is not ("csv" or "google-sheets")) throw new ArgumentException("Эта интеграция не является журналом откликов.");
+            if (await db.Set<JournalImport>().AnyAsync(x => x.IntegrationId == id && x.Status == "Preview", ct))
+                throw new InvalidOperationException("У журнала есть строки на проверке. Завершите импорт в разделе «Импорт журналов».");
+            if (await JournalApproval.Pending(db).AnyAsync(x => x.Id == id, ct))
+            {
+                db.Audit.Add(new AuditEvent { EntityId = id, EntityType = nameof(Integration), Action = JournalApproval.NoPriorJournal });
+                await db.SaveChangesAsync(ct);
+            }
+            await tx.CommitAsync(ct);
+            return Results.Ok(new { journalApprovalPending = false, source.ImportConfirmed });
+        });
         app.MapPost("/api/integrations", async (Integration input, JobFlowDb db, CancellationToken ct) =>
         {
             await Validate(input,db,ct);input.Id=Guid.NewGuid();input.ImportConfirmed=false;input.LastStatus="NotChecked";input.LastCheckedAt=null;
@@ -39,6 +61,8 @@ public static class IntegrationEndpoints
         {
             await Validate(input,db,ct);var row=await db.Set<Integration>().SingleAsync(x=>x.Id==id,ct);
             if(row.CandidateProfileId!=input.CandidateProfileId||row.JobPlatformId!=input.JobPlatformId||row.Kind!=input.Kind)throw new ArgumentException("Create a new integration to change its owner, platform or kind.");
+            if (row.Kind is ("csv" or "google-sheets") && (row.Endpoint != input.Endpoint || row.MappingJson != input.MappingJson))
+                db.Audit.Add(new AuditEvent { EntityId = id, EntityType = nameof(Integration), Action = JournalApproval.SourceChanged });
             input.Id=id;input.CreatedAt=row.CreatedAt;input.ImportConfirmed=row.ImportConfirmed;input.LastStatus=row.LastStatus;input.LastCheckedAt=row.LastCheckedAt;
             db.Entry(row).CurrentValues.SetValues(input);await db.SaveChangesAsync(ct);return Results.Ok(row);
         });
@@ -74,7 +98,7 @@ public static class IntegrationEndpoints
     private static async Task Validate(Integration input,JobFlowDb db,CancellationToken ct)
     {
         if(string.IsNullOrWhiteSpace(input.Name))throw new ArgumentException("Integration name is required.");
-        if(input.Kind is not ("csv" or "google-sheets" or "gmail" or "feedback-json" or "hh-status" or "status-json"))throw new ArgumentException("Unsupported integration kind.");
+        if(input.Kind is not ("csv" or "google-sheets" or "gmail" or "feedback-json" or "hh-status" or "hh-chats" or "status-json"))throw new ArgumentException("Unsupported integration kind.");
         if(input.ConflictPolicy is not ("keep-local" or "update-vacancies"))throw new ArgumentException("Unknown conflict policy.");
         if(!await db.Profiles.AnyAsync(x=>x.Id==input.CandidateProfileId,ct))throw new ArgumentException("Profile not found.");
         if(input.Kind is "csv" or "google-sheets")
@@ -82,21 +106,26 @@ public static class IntegrationEndpoints
             if(!await db.Platforms.AnyAsync(x=>x.Id==input.JobPlatformId,ct))throw new ArgumentException("Choose a platform for the journal.");
             _=JsonSerializer.Deserialize<Dictionary<string,string>>(input.MappingJson)??throw new ArgumentException("Mapping must be an object.");
         }
-        if (input.Kind is "hh-status" or "status-json")
+        if (input.Kind is "hh-status" or "status-json" or "hh-chats")
         {
             var platform = await db.Platforms.SingleOrDefaultAsync(x => x.Id == input.JobPlatformId, ct);
             if (platform == null || (input.Kind == "hh-status" && platform.Adapter != "headhunter"))
                 throw new ArgumentException("Choose a matching platform for status monitoring.");
+            if (input.Kind == "hh-chats" && (!Uri.TryCreate(platform.Url, UriKind.Absolute, out var board) ||
+                (board.IdnHost != "hh.ru" && !board.IdnHost.EndsWith(".hh.ru", StringComparison.OrdinalIgnoreCase) &&
+                 board.IdnHost != "rabota.by" && !board.IdnHost.EndsWith(".rabota.by", StringComparison.OrdinalIgnoreCase))))
+                throw new ArgumentException("Для чтения чатов выберите площадку hh.ru или rabota.by.");
         }
-        if(input.MailAgentId is Guid agent && (input.Kind!="gmail" || !await db.Agents.AnyAsync(x=>x.Id==agent && x.CandidateProfileId==input.CandidateProfileId && x.TaskType=="MailAnalysis",ct)))
-            throw new ArgumentException("Choose a MailAnalysis agent from the same profile for Gmail.");
+        if(input.MailAgentId is Guid agent && (input.Kind is not ("gmail" or "hh-chats" or "feedback-json") ||
+            !await db.Agents.AnyAsync(x=>x.Id==agent && x.CandidateProfileId==input.CandidateProfileId && x.TaskType=="MailAnalysis",ct)))
+            throw new ArgumentException("Выберите агента разбора сообщений из того же профиля.");
         if(input.Kind!="csv")
         {
             if (!Uri.TryCreate(input.Endpoint,UriKind.Absolute,out var endpoint)) throw new ArgumentException("Integration endpoint is required.");
             RemoteIntegrationService.ValidateEndpoint(input.Kind, endpoint);
         }
     }
-    public record SheetTarget(string Tab, string? Digest);
+    public record SheetTarget(string Tab, string? Digest, Guid[]? PlatformIds = null, bool AllPlatforms = false, string? Spreadsheet = null, bool StartNewJournal = false);
     public record FeedbackLink(Guid ApplicationId);
     public record CsvInput(string Csv);
 }

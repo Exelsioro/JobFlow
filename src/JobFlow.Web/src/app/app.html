@@ -1,34 +1,106 @@
+<a class="skip-link" href="#workspace-main" (click)="$event.preventDefault();mainContent.focus()">К содержимому</a>
 <div class="workspace"><aside>
 <a class="brand" href="#dashboard" (click)="navigate('dashboard')"><span class="brand-mark">J</span>JobFlow</a>
-<p class="workspace-label">Локальное пространство</p>
-<nav aria-label="Разделы">@for(item of sections;track item.key){<button type="button" [class.active]="section()===item.key" [attr.aria-current]="section()===item.key?'page':null" (click)="navigate(item.key)">{{item.title}}</button>}</nav>
-<div class="sidebar-note">Данные под вашим контролем<br><strong>Реальная отправка выключена</strong></div></aside>
-<main><header class="topbar"><label class="profile-picker">Рабочий профиль<select [(ngModel)]="profileId"><option value="">Выберите профиль</option>@for(p of data()['profiles']??[];track p['id']){<option [value]="p['id']">{{p['name']}}</option>}</select></label>
+
+<button type="button" class="secondary mobile-nav-toggle" [attr.aria-expanded]="mobileNavigationOpen" aria-controls="sidebar-navigation" (click)="mobileNavigationOpen=!mobileNavigationOpen">Меню<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" [class.expanded]="mobileNavigationOpen"><path d="m7 5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+<nav id="sidebar-navigation" aria-label="Разделы" [class.mobile-open]="mobileNavigationOpen">
+@for(item of navigationLinks;track item.key){<button type="button" [class.active]="section()===item.key" [attr.aria-current]="section()===item.key?'page':null" (click)="navigate(item.key)">{{item.title}}</button>}
+@for(group of navigationGroups;track group.key){
+<div class="nav-group">
+<button type="button" class="nav-group-toggle" [class.current]="group.keys.includes(section())" [attr.aria-expanded]="openNavigationGroups().includes(group.key)" [attr.aria-controls]="'nav-'+group.key" (click)="toggleNavigationGroup(group.key)"><span>{{group.title}}</span><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" [class.expanded]="openNavigationGroups().includes(group.key)"><path d="m7 5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+<div class="nav-items" [id]="'nav-'+group.key" [hidden]="!openNavigationGroups().includes(group.key)">
+@for(item of group.items;track item.key){<button type="button" [class.active]="section()===item.key" [attr.aria-current]="section()===item.key?'page':null" (click)="navigate(item.key)">{{item.title}}</button>}
+</div>
+</div>
+}
+</nav>
+</aside>
+<main #mainContent id="workspace-main" tabindex="-1"><header class="topbar"><label class="profile-picker">Рабочий профиль<select [disabled]="saving()" [ngModel]="profileId" (ngModelChange)="selectWorkspaceProfile($event)"><option value="">Выберите профиль</option>@for(p of data()['profiles']??[];track p['id']){<option [value]="p['id']">{{p['name']}}</option>}</select></label>
 <button class="secondary" (click)="refresh()" [disabled]="loading()">{{loading()?'Обновление…':'Обновить'}}</button></header>
 <div class="page"><div class="page-heading"><div><h1>{{current().title}}</h1><p>{{current().description}}</p></div>
-@if(current().fields&&!editing()){<button class="primary" (click)="create()">Создать</button>}</div>
+@if(current().fields&&!editing()&&!(section()==='applications'&&recordId())){<button class="primary" (click)="create()">Создать</button>}</div>
+@if(loadWarning()){<div class="notice warning" role="status">{{loadWarning()}}</div>}
 @if(error()){<div class="notice error" role="alert">{{error()}}</div>}@if(message()){<div class="notice success" role="status">{{message()}}</div>}
+@if(section()==='platforms'&&platformLogin&&platformLoginProfileId===profileId){
+<section class="editor platform-login" aria-labelledby="platform-login-heading">
+<h2 id="platform-login-heading" tabindex="-1">Вход на {{platformLogin['name']}}</h2>
+@if(data()['browser-profiles']?.length){
+<p>Выберите сохранённый браузерный профиль. Чтобы агент использовал этот вход, укажите тот же профиль в настройках Workflow.</p>
+<label>Браузерный профиль<select [(ngModel)]="platformLoginBrowserId" [disabled]="saving()"><option value="">Выберите профиль</option>@for(browser of data()['browser-profiles'];track browser['id']){<option [value]="browser['id']">{{browser['name']}}</option>}</select></label>
+<div class="form-actions"><button type="button" class="primary" [disabled]="saving()||!platformLoginBrowserId" (click)="openPlatformLogin()">{{saving()?'Открываем браузер…':'Открыть сайт для входа'}}</button><button type="button" class="secondary" [disabled]="saving()" (click)="platformLogin=null">Отмена</button></div>
+} @else {
+<p>Создайте браузерный профиль: в нём будут сохранены входы на площадки.</p>
+<div class="form-actions"><button type="button" class="primary" (click)="platformLogin=null;navigate('browser-profiles');create()">Создать браузерный профиль</button><button type="button" class="secondary" (click)="platformLogin=null">Отмена</button></div>
+}
+</section>
+}
+@if(recordId()&&section()!=='applications'){<div class="related-record"><span>Открыта связанная запись</span><button type="button" class="secondary" (click)="clearRecord()">Показать все записи</button></div>}
+@if(prepareTarget){<section class="editor preparation-panel" aria-labelledby="preparation-heading"><h2 id="preparation-heading">Подготовить отклик</h2><p>{{prepareTarget['title']}} · {{prepareTarget['employer']}}</p><p>Служба проверит страницу, оценит соответствие, подготовит письмо и резюме. Отправка не выполняется. При неподтверждённых требованиях результат останется для вашего решения.</p>
+@if(preparationWorkflows().length){<label>Настройки подготовки<select [ngModel]="preparationWorkflowId" (ngModelChange)="preparationWorkflowId=$event;preparationOutsideAgeLimit=false">@for(workflow of preparationWorkflows();track workflow['id']){<option [value]="workflow['id']">{{workflow['name']}}</option>}</select></label>}
+@else{<p>Нет включённого браузерного workflow для этого профиля и площадки. <a href="#workflows">Настроить workflow</a></p>}
+@if(preparationFreshnessWarning()){<p role="status">{{preparationFreshnessWarning()}}</p>}
+@if(preparationWorkflowId){
+  <label class="checkbox"><input type="checkbox" [(ngModel)]="preparationOutsideAgeLimit" [disabled]="saving()"><span>Подготовить вне лимита возраста</span></label>
+}
+<div class="form-actions"><button type="button" class="primary" [disabled]="saving()||!preparationWorkflowId||(!!preparationFreshnessWarning()&&!preparationOutsideAgeLimit)" (click)="prepareApplication()">{{saving()?'Постановка в очередь…':'Начать подготовку'}}</button><button type="button" class="secondary" [disabled]="saving()" (click)="prepareTarget=null">Отмена</button></div></section>}
 @if(section()==='dashboard'){
-<section class="overview"><h2>{{status()['profiles']?'Рабочее пространство готово':'Начните с профиля кандидата'}}</h2><p>Добавьте опыт и правила поиска, загрузите резюме, затем настройте площадки и агентов. Каждый профиль ведётся отдельно.</p><button class="primary" (click)="navigate('profiles');create()">Создать профиль</button></section>
-<dl class="summary"><div><dt>Профили</dt><dd>{{status()['profiles']??0}}</dd></div><div><dt>Вакансии</dt><dd>{{status()['vacancies']??0}}</dd></div><div><dt>Отклики</dt><dd>{{status()['applications']??0}}</dd></div><div><dt>Задания</dt><dd>{{status()['tasks']??0}}</dd></div></dl>
-<section class="setup-list"><h2>Настройка рабочего процесса</h2>
-<button (click)="navigate('resumes')"><span><strong>Резюме и версии</strong><small>Загрузите PDF для конкретного профиля</small></span><span>Открыть →</span></button>
-<button (click)="navigate('providers')"><span><strong>AI-провайдер</strong><small>Настройте Codex CLI и разрешите вызовы</small></span><span>Настроить →</span></button>
-<button (click)="navigate('tasks')"><span><strong>Фоновые задания</strong><small>Выберите действие и интервал запуска</small></span><span>Настроить →</span></button></section>
-<section class="boundary"><h2>Безопасная проверка</h2><p>Playwright заполняет изолированную форму искусственными данными и проверяет квитанцию. Внешних откликов не отправляет.</p><button class="secondary" [disabled]="saving()" (click)="command('browser/dry-run')">{{saving()?'Выполняется…':'Запустить браузерный dry-run'}}</button></section>}
+  <app-workspace-dashboard [records]="data()" [profile]="profileId" [busy]="saving()"
+    (filter)="openApplicationQueue($event)" (createProfile)="navigate('profiles');create()"
+    (testBrowser)="command('browser/dry-run')" />
+}
 @if(editing()){
-<form class="editor" (ngSubmit)="save()">
-@if(section()==='agents'){<div class="form-actions"><button type="button" class="secondary" (click)="template('Evaluation')">Шаблон оценки</button><button type="button" class="secondary" (click)="template('CoverLetter')">Шаблон письма</button><button type="button" class="secondary" (click)="template('MailAnalysis')">Шаблон разбора почты</button></div>}<h2>{{draft['id']?'Редактирование':'Новая запись'}}</h2><div class="form-grid">
-@for(field of formFields();track field.key){<label [class.wide]="field.type==='textarea'" [class.checkbox]="field.type==='checkbox'">
+<form class="editor" #editorForm="ngForm" (ngSubmit)="canSaveEditor(editorForm.valid)&&save()">
+@if(section()==='integrations'&&draft['kind']==='gmail'){<p>Для Gmail выберите профиль и агента разбора писем. После сохранения нажмите «Подключить Google» и разрешите чтение почты. Адрес сервиса задаётся автоматически; площадка поиска работы здесь не нужна.</p>}
+@if(section()==='agents'){<div class="form-actions"><button type="button" class="secondary" (click)="template('Resume')">Шаблон адаптации резюме</button><button type="button" class="secondary" (click)="template('Dossier')">Шаблон извлечения досье</button></div>}
+@if(section()==='agents'){<div class="form-actions"><button type="button" class="secondary" (click)="template('BrowserAutomation')">Шаблон управления браузером</button><button type="button" class="secondary" (click)="template('Evaluation')">Шаблон оценки</button><button type="button" class="secondary" (click)="template('CoverLetter')">Шаблон письма</button><button type="button" class="secondary" (click)="template('MailAnalysis')">Шаблон разбора почты</button></div>}<h2>{{draft['id']?'Редактирование':'Новая запись'}}</h2><div class="form-grid">
+@for(field of formFields();track field.key){<div [class.wide]="field.type==='textarea'"><label [class.checkbox]="field.type==='checkbox'">
 @if(field.type!=='checkbox'){<span>{{field.label}}{{field.required?' *':''}}</span>}
 @switch(field.type){
+@case('number'){<input type="number" [name]="field.key" [(ngModel)]="draft[field.key]" [required]="!!field.required" [min]="field.min??null" [max]="field.max??null" [attr.aria-describedby]="field.help?'help-'+field.key:null">}
 @case('textarea'){<textarea [name]="field.key" [(ngModel)]="draft[field.key]" [required]="!!field.required" rows="4"></textarea>}
-@case('select'){<select [name]="field.key" [(ngModel)]="draft[field.key]" [required]="!!field.required">
+@case('model'){<select [name]="field.key" [(ngModel)]="draft[field.key]" (ngModelChange)="fieldChanged(field)" [disabled]="modelsLoading()" aria-describedby="model-catalog-status">
+<option value="">{{inheritedModelLabel()}}</option>
+@if(missingSavedModel()){<option [value]="draft['model']">{{draft['model']}} · сохранённая модель, отсутствует в списке</option>}
+@for(model of modelCatalog()?.models??[];track model.id){<option [value]="model.id">{{model.displayName||model.id}}{{model.displayName&&model.displayName!==model.id?' · '+model.id:''}}{{model.isDefault?' · по умолчанию CLI':''}}</option>}
+</select>}
+@case('select'){<select [name]="field.key" [(ngModel)]="draft[field.key]" (ngModelChange)="fieldChanged(field)" [required]="!!field.required" [attr.aria-describedby]="field.help?'help-'+field.key:field.key==='adapter'?'platform-adapter-help':field.key==='browserMode'?'platform-browser-mode-help':null">
 @if(field.source){<option value="">Выберите…</option>@for(option of options(field);track option['versionId']||option['id']){<option [value]="optionId(field,option)">{{optionName(option)}}</option>}}
-@else{@for(option of fieldOptions(field);track option){<option [value]="option">{{option||'По умолчанию'}}</option>}}</select>}
+@else{@for(option of fieldOptions(field);track option){<option [value]="option">{{fieldOptionLabel(field,option)}}</option>}}</select>}
 @case('checkbox'){<input type="checkbox" [name]="field.key" [(ngModel)]="draft[field.key]"><span>{{field.label}}</span>}
-@default{<input [type]="field.type||'text'" [name]="field.key" [(ngModel)]="draft[field.key]" [required]="!!field.required">}
-}</label>}
+@default{<input [type]="field.type||'text'" [name]="field.key" [(ngModel)]="draft[field.key]" [required]="!!field.required" [min]="field.min??null" [max]="field.max??null" [attr.aria-describedby]="field.help?'help-'+field.key:null">}
+}</label>
+@if(field.help){<small [id]="'help-'+field.key">{{field.help}}</small>}
+@if(section()==='platforms'&&field.key==='adapter'){<small id="platform-adapter-help">{{adapterHelp(draft['adapter'])}}</small>}
+@if(section()==='platforms'&&field.key==='browserMode'){<small id="platform-browser-mode-help">Используется при поиске, чтении вакансии и отклике через браузерный workflow. При смене режима браузер перезапускается и вкладки закрываются; авторизация остаётся в сохранённом профиле. Ручной вход открывается в видимом браузере.</small>}
+@if(field.type==='model'){
+<div id="model-catalog-status" aria-live="polite">
+@if(modelsLoading()){<small>Загружаем модели из CLI…</small>}
+@else if(modelsError()){<p class="notice error" role="alert">{{modelsError()}}</p>}
+@else if(section()==='agents'&&!draft['modelProviderId']){<small>Выберите провайдера, чтобы загрузить доступные модели.</small>}
+@else if(modelCatalog()?.models?.length){<small>Модели установленного CLI. При пустом выборе используется {{inheritedModel()||'выбор CLI'}}.</small>}
+@else{<small>Список моделей пуст. Проверьте авторизацию CLI и обновите список.</small>}
+</div>
+<button type="button" class="secondary" [disabled]="modelsLoading()||(section()==='agents'&&!draft['modelProviderId'])" (click)="loadModels(true)">Обновить список моделей</button>
+}
+@if(field.key==='reasoning'&&reasoningWarning()){<small role="alert">{{reasoningWarning()}}</small>}
+@if(field.key==='reasoning'&&selectedModel();as model){<small>По умолчанию модели: {{model.defaultReasoningEffort}}.</small>}
+@if(section()==='accounts'&&field.key==='jobPlatformId'){
+<div class="form-actions">
+<small>Выберите сохранённый сайт или добавьте новый с адресом.</small>
+<button type="button" class="secondary" [disabled]="saving()||addingPlatform" (click)="openPlatformEditor()">Добавить площадку</button>
+</div>
+}
+</div>
+@if(section()==='accounts'&&field.key==='jobPlatformId'&&addingPlatform){
+<fieldset class="wide platform-picker"><legend>Новая площадка</legend>
+<div class="form-grid">
+<label>Название площадки *<input name="inlinePlatformName" [(ngModel)]="platformNameInput" placeholder="Например, HeadHunter" [ngModelOptions]="{standalone:true}"></label>
+<label>Адрес сайта *<input type="url" name="inlinePlatformUrl" [(ngModel)]="platformUrlInput" placeholder="https://hh.ru" [ngModelOptions]="{standalone:true}"></label>
+</div>
+<div class="form-actions"><button type="button" class="primary" [disabled]="saving()||!platformNameInput.trim()||!platformUrlInput.trim()" (click)="saveInlinePlatform()">{{saving()?'Добавление…':'Добавить и выбрать'}}</button><button type="button" class="secondary" [disabled]="saving()" (click)="addingPlatform=false">Отмена добавления</button></div>
+</fieldset>
+}
+}
 @if(section()==='workflows'){
 <fieldset class="wide platform-picker">
 <legend>Площадки запуска</legend>
@@ -40,51 +112,290 @@
 }@else{<p>Добавьте площадки в одноимённом разделе.</p>}
 </fieldset>
 }
-</div><div class="form-actions"><button type="submit" class="primary" [disabled]="saving()||(section()==='workflows'&&!selectedPlatforms(draft).length)">{{saving()?'Сохранение…':'Сохранить'}}</button><button type="button" class="secondary" (click)="editing.set(false)">Отмена</button></div></form>}
+@if(section()==='agents'&&draft['useTaskModelPresets']){<fieldset class="wide task-policy"><legend>Модели для операций агента</legend><p>Язык объяснений не меняет язык письма и резюме. Модель и reasoning выбираются отдельно для каждой операции из доступных в CLI.</p>
+<button type="button" class="secondary" [disabled]="modelsLoading()||!draft['modelProviderId']" (click)="loadModels(true)">Обновить модели из CLI</button>
+@if(modelsLoading()){<p role="status">Загружаем доступные модели…</p>}
+@else if(modelsError()){<p class="notice error" role="alert">{{modelsError()}}</p>}
+@else if(recommendedTaskModels().length){<div class="table-wrap"><table><thead><tr><th>Задача</th><th>Модель</th><th>Reasoning</th><th>Почему</th></tr></thead><tbody>@for(policy of recommendedTaskModels();track policy['operation']){<tr><td>{{policy['title']}}</td><td>{{policy['model']}}</td><td>{{policy['reasoning']}}</td><td>{{policy['why']}}</td></tr>}</tbody></table></div>}
+@else{<p>Для этого этапа выберите модель вручную, отключив подбор по задаче.</p>}
+</fieldset>}
+</div><div class="form-actions"><button type="submit" class="primary" [disabled]="!canSaveEditor(editorForm.valid)">{{saving()?'Сохранение…':'Сохранить'}}</button><button type="button" class="secondary" (click)="editing.set(false)">Отмена</button></div></form>}
 @if(section()==='resumes'){
 <form class="upload" (ngSubmit)="upload()"><h2>Загрузить PDF</h2><p>Используется профиль, выбранный вверху. Максимум — 10 МБ.</p>
 <label>Резюме<select name="resumeId" [(ngModel)]="resumeId"><option value="">Создать новое резюме</option>@for(r of uniqueResumes();track r['id']){@if(r['candidateProfileId']===profileId){<option [value]="r['id']">{{r['name']}} · новая версия</option>}}</select></label>
 <label>Файл<input type="file" accept=".pdf,application/pdf" (change)="chooseFile($event)" required></label><button class="primary" [disabled]="saving()||!file||!profileId">Загрузить версию</button></form>}
 
 @if(section()==='integrations'){<a class="button secondary" href="/api/export/vacancies.csv" download>Скачать вакансии в CSV</a>}
-@if(current().columns){
-<div class="list-heading"><h2>Записи <span class="count">{{rows().length}}</span></h2><label class="search"><span class="sr-only">Поиск записей</span><input type="search" placeholder="Поиск по записям" [ngModel]="query()" (ngModelChange)="query.set($event)"></label></div>
-@if(rows().length){<div class="table-wrap"><table><thead><tr>@for(col of current().columns;track col){<th>{{labels[col]||col}}</th>}<th><span class="sr-only">Действия</span></th></tr></thead><tbody>
+@if(section()==='applications'&&recordId()){
+<section class="application-view" aria-labelledby="application-view-title">
+<div class="application-view-toolbar"><button type="button" class="text-button" (click)="clearRecord()">К списку откликов</button><button type="button" class="secondary" [disabled]="applicationDetailLoading()||saving()" (click)="loadApplication(recordId())">{{applicationDetailLoading()?'Обновление…':'Обновить состояние'}}</button></div>
+@if(applicationDetailError()){<div class="notice error" role="alert">{{applicationDetailError()}} Последнее полученное состояние не обновлено.</div>}
+@if(applicationDetail();as detail){
+@let application=detail['application'];
+@let ageBlocksPreparation=detail['preparationAgeLimit']&&['Discovered','Evaluating','Drafting','Blocked','Skipped'].includes(application.state);
+<header class="application-view-heading"><div><h2 id="application-view-title" tabindex="-1">{{detail['vacancy'].title}}</h2><p>{{detail['vacancy'].employer}} · {{display('candidateProfileId',application.candidateProfileId)}}</p></div><span class="application-status" [attr.data-state]="application.state">{{display('state',application.state)}}</span></header>
+<p class="application-state-hint">{{applicationStateHint(application.state)}}</p>
+<div class="application-meta"><span>Создано: {{display('createdAt',application.createdAt)}}</span><span>Состояние на {{display('observedAt',detail['observedAt'])}} · обновляется каждые 15 секунд</span></div>
+@if(ageBlocksPreparation||detail['attention']){
+  <section class="application-attention" aria-labelledby="application-attention-title">
+    <h3 id="application-attention-title">Что мешает подготовке</h3>
+    @if(ageBlocksPreparation){
+      <p>Вакансия опубликована {{detail['vacancy']['publishedAt'] | date:'dd.MM.yyyy'}}. Лимит workflow — {{detail['preparationAgeLimit']}} дн. Для разовой перепроверки выберите «Подготовить отклик» и отметьте «Подготовить вне лимита возраста».</p>
+    }
+    @if(detail['attention']&&!(ageBlocksPreparation&&detail['ageOnlyAttention'])){
+      <p>{{ageBlocksPreparation?'Причина предыдущей остановки: ':''}}{{detail['attention']}}</p>
+    }
+  </section>
+}
+@else if(detail['externalDraftNotice'];as notice){
+  @if(['ReadyForReview','ReadyToSubmit','Blocked'].includes(application.state)){
+    <section class="application-attention" aria-labelledby="external-draft-notice-title">
+      <h3 id="external-draft-notice-title">{{notice.outcome==='Routed'?'Переадресация на площадку':notice.outcome==='Suspicious'?'Внешний сайт не подтверждён':'Внешний отклик не отправлен'}}</h3>
+      <p>{{notice.reason}}</p>
+    </section>
+  }
+}
+<div class="application-controls">
+@if(!applicationStatusEditing){<button type="button" class="secondary" [disabled]="saving()||!detail['allowedTransitions'].length||['Queued','Running'].includes(detail['clarification']?.status)" (click)="beginApplicationStatusChange()">Изменить статус</button>@if(!detail['allowedTransitions'].length){<span class="muted">Для текущего статуса нет доступных переходов.</span>}}
+@if(safeLink(detail['vacancy'].url);as url){<a [href]="url" target="_blank" rel="noopener noreferrer">Вакансия на площадке</a>}
+@if(canPrepare(application)){<button type="button" class="text-button" [disabled]="saving()" (click)="startPreparation(application)">Подготовить отклик</button>}
+@if(detail['externalDraft']){<button type="button" class="text-button" [disabled]="saving()" (click)="reviewExternalDraft(application)">Проверить внешнюю форму</button>}
+@if(application.state==='ReadyToSubmit'&&!application.isTest){<button type="button" class="text-button" [disabled]="saving()" (click)="openBrowserDraft(application)">Заполнить в браузере</button>}
+@if(!application.isTest&&(application.state==='ReadyToSubmit'||application.state==='SubmissionUnknown'||(detail['externalDraft']&&application.state==='ReadyForReview'))){
+  <button type="button" class="text-button" [disabled]="saving()" (click)="recordManualSubmission(application)">Отправлен вручную</button>
+}
+@if(application.state==='ReadyToSubmit'&&application.isTest){<button type="button" class="text-button" [disabled]="saving()" (click)="testSubmit(application)">Проверить тестовую отправку</button>}
+@if(application.state==='Submitting'){<button type="button" class="text-button" [disabled]="saving()" (click)="command('applications/'+application.id+'/mark-unknown')">Зафиксировать неизвестный результат</button>}
+</div>
+@if(applicationStatusEditing){<form class="application-status-editor" (ngSubmit)="saveApplicationStatus()"><h3>Изменение статуса</h3><p>Текущий статус: <strong>{{display('state',application.state)}}</strong>. Выберите доступный следующий статус.</p><label>Новый статус<select name="applicationNextState" [(ngModel)]="applicationNextState" required><option value="">Выберите статус</option>@for(next of detail['allowedTransitions'];track next){<option [value]="next" [disabled]="next==='ReadyToSubmit'&&detail['approvalBlockers'].length">{{display('state',next)}}</option>}</select></label>
+@if(detail['approvalBlockers'].length&&detail['allowedTransitions'].includes('ReadyToSubmit')){<p class="muted">Для одобрения: {{detail['approvalBlockers'].join(' ')}}</p>}
+@if(detail['journalApprovalPending']&&detail['allowedTransitions'].includes('ReadyToSubmit')){<p><a href="#integrations">Настроить журнал откликов</a></p>}
+<p class="muted">Статус «Отправлена» фиксируется после подтверждения отправки.</p><div class="form-actions"><button type="submit" class="primary" [disabled]="saving()||!applicationNextState">Сохранить статус</button><button type="button" class="secondary" [disabled]="saving()" (click)="applicationStatusEditing=false;applicationNextState=''">Отмена</button></div></form>}
+<section class="application-clarification" aria-labelledby="application-clarification-title"><h3 id="application-clarification-title">Уточнение по вакансии</h3>
+<p>Если вакансия, резюме и письмо вас устраивают, отвечать не нужно. Чтобы доработать материалы именно этого отклика, укажите факт или исправление.</p>
+@if(!detail['attention']&&applicationClarificationQuestions(detail).length){<p><strong>Что можно уточнить:</strong></p><ul>@for(question of applicationClarificationQuestions(detail);track $index){<li>{{question}}</li>}</ul>}
+@if(detail['clarification'];as clarification){<p role="status"><strong>{{clarificationStatus(clarification.status)}}</strong> · {{display('submittedAt',clarification.submittedAt)}}</p><details><summary>Переданные уточнения</summary>@for(note of detail['clarificationHistory'];track note.id){<p class="application-copy">{{note.text}}</p>}</details>}
+@if(['Queued','Running'].includes(detail['clarification']?.status)){<p class="muted">Доработка ещё не завершена. Ниже показаны материалы, привязанные к отклику на текущий момент.</p>}
+@if(detail['canClarify']){
+  @let busy = saving()||['Queued','Running'].includes(detail['clarification']?.status);
+  <form (ngSubmit)="submitApplicationClarification()">
+    <label for="application-clarification-text">Ваше уточнение
+      <textarea id="application-clarification-text" name="applicationClarificationText" rows="4" maxlength="6000" required [ngModel]="applicationClarificationText" (ngModelChange)="updateApplicationClarification($event)" [disabled]="busy" placeholder="Например: уточните формулировку о проекте или подтвердите требуемый опыт."></textarea>
+    </label>
+    <label class="checkbox"><input type="checkbox" name="clarificationOutsideAgeLimit" [(ngModel)]="clarificationOutsideAgeLimit" [disabled]="busy"><span>Доработать вне лимита возраста</span></label>
+    <div class="form-actions">
+      <button type="submit" class="primary" [disabled]="busy||!applicationClarificationText.trim()">Передать уточнение</button>
+      <span class="muted">Повторная оценка, доработка документов и проверка. Отправки работодателю не будет.</span>
+    </div>
+  </form>
+}
+@else{<p class="muted">Автоматическая доработка недоступна: требуется связанный workflow и отклик без попытки отправки.</p>}
+</section>
+<div class="application-content">
+<section aria-labelledby="application-letter-title"><div class="application-section-heading"><h3 id="application-letter-title">Текущее письмо</h3>@if(['Drafting','ReadyForReview'].includes(application.state)){<button type="button" class="text-button" [disabled]="saving()" (click)="editLetter(application)">Изменить письмо</button>}</div>@if(application.coverLetter){<div class="application-letter">{{application.coverLetter}}</div>}@else{<p class="muted">Письмо ещё не подготовлено.</p>}</section>
+<section aria-labelledby="application-resume-title"><h3 id="application-resume-title">Резюме этого отклика</h3>@if(detail['resume'];as resume){<p>{{resume.origin==='AgentGenerated'?'Адаптированное резюме':'Исходное резюме'}} · версия {{resume.version}}</p><p class="application-resume-note">{{resume.originalName}}</p>@if(['Blocked','Discovered','Evaluating','Drafting'].includes(application.state)&&resume.origin!=='AgentGenerated'){<p class="muted">Адаптация ещё не завершена. К отклику привязана исходная версия.</p>}<a [href]="'/api/resumes/versions/'+resume.id+'/download'">Скачать этот PDF</a>@if(applicationPdf();as pdf){<details class="application-pdf-preview"><summary>Просмотреть этот PDF</summary><iframe class="application-pdf" [src]="pdf" title="Текущий PDF, привязанный к отклику"></iframe><p class="muted">Если браузер не отображает PDF, скачайте его по ссылке выше.</p></details>}}@else{<p class="muted">Версия резюме недоступна.</p>}</section>
+</div>
+@if(detail['evaluation'];as evaluation){
+  @let assessment=readEvaluation(evaluation);
+  <section class="application-assessment">
+    <h3>{{detail['evaluationIsCurrent']===false?'Предыдущая оценка вакансии':'Последняя оценка вакансии'}}</h3>
+    @if(detail['evaluationIsCurrent']===false){<p class="muted">Новой оценки по текущему состоянию нет.</p>}
+    @else{
+      <p><strong>{{display('evaluationDecision',assessment['evaluationDecision'])}}</strong> · {{display('createdAt',evaluation.createdAt)}}</p>
+      <p class="application-copy">{{assessment['evaluationRationale']}}</p>
+      @for(group of evaluationLists;track group.key){
+        @if(assessment[group.key]?.length){<h4>{{group.label}}</h4><ul>@for(item of assessment[group.key];track $index){<li>{{item}}</li>}</ul>}
+      }
+      @if(assessment['historicalEvaluationNotes']?.length){
+        <details class="application-assessment-notes">
+          <summary>Заметки прежней оценки</summary>
+          <p class="muted">Могут включать условия работодателя и уже известные данные. Отвечать на эти заметки необязательно.</p>
+          <ul>@for(note of assessment['historicalEvaluationNotes'];track $index){<li>{{note}}</li>}</ul>
+        </details>
+      }
+    }
+  </section>
+}
+<section class="application-response"><h3>Ответ работодателя</h3><p>{{application.responseStatus||'Ответ пока не зафиксирован.'}}</p>@if(application.responseStatusAt){<p class="muted">Обновлено источником: {{display('responseStatusAt',application.responseStatusAt)}}</p>}</section>
+@if(detail['history'].length){<details class="application-history"><summary>История изменения отклика</summary><ol>@for(event of detail['history'];track event.id){<li><time>{{display('createdAt',event.createdAt)}}</time><p>{{applicationHistoryText(event)}}</p></li>}</ol></details>}
+}@else if(applicationDetailLoading()){<p role="status">Загружаем текущее состояние отклика…</p>}
+</section>
+}
+@if(current().columns&&!(section()==='applications'&&recordId())){
+@if(section()==='applications'){
+  <div class="form-grid application-list-controls">
+    <div>
+      <span id="application-status-label" class="application-status-label">Текущий статус</span>
+      <details class="application-status-picker">
+        <summary aria-labelledby="application-status-label application-status-selection"><span id="application-status-selection">{{applicationStatusFilterLabel()}}</span></summary>
+        <div class="application-status-options" role="group" aria-labelledby="application-status-label">
+          @for(value of applicationStatusOptions;track value){
+            <label class="checkbox">
+              <input #statusCheckbox type="checkbox" [checked]="applicationStatusFilter().includes(value)" (change)="toggleApplicationStatus(value,statusCheckbox.checked)">
+              <span>{{applicationStatusLabels[value]}}</span>
+            </label>
+          }
+        </div>
+        @if(hasApplicationFilter()){<button type="button" class="text-button" (click)="applicationStatusFilter.set([])">Показать все статусы</button>}
+      </details>
+    </div>
+    <div>
+      <label for="application-status-sort">Сортировка</label>
+      <select id="application-status-sort" [ngModel]="applicationSort()" (ngModelChange)="applicationSort.set($event)">
+        <option value="newest">Сначала новые</option>
+        <option value="status-asc">По статусу: А–Я</option>
+        <option value="status-desc">По статусу: Я–А</option>
+      </select>
+    </div>
+  </div>
+}
+@if(section()==='vacancies'){<label class="checkbox"><input type="checkbox" [ngModel]="vacancyArchive()" (ngModelChange)="vacancyArchive.set($event)"><span>Архив удалённых вакансий</span></label><small>Ручная оценка использует встроенные правила. CLI-агент оценивает вакансии при запуске workflow.</small>
+<div class="form-grid vacancy-filters"><label><span>Статус обработки</span><select [ngModel]="vacancyStatusFilter()" (ngModelChange)="vacancyStatusFilter.set($event)">@for(value of vacancyStatusOptions;track value){<option [value]="value">{{applicationStatusLabels[value]}}</option>}</select></label>
+<label><span>Результат последней оценки</span><select [ngModel]="vacancyEvaluationFilter()" (ngModelChange)="vacancyEvaluationFilter.set($event)">@for(value of vacancyEvaluationOptions;track value){<option [value]="value">{{evaluationResultLabels[value]}}</option>}</select></label></div>}
+<div class="list-heading"><h2>Записи @if(data()[section()]){<span class="count" [attr.aria-live]="section()==='applications'?'polite':null">{{rows().length}}</span>}</h2><label class="search"><span class="sr-only">Поиск записей</span><input type="search" placeholder="Поиск по записям" [ngModel]="query()" (ngModelChange)="query.set($event)"></label></div>
+@if(rows().length){<div class="table-wrap" [class.notifications-table]="section()==='notifications'" [class.application-list-table]="section()==='applications'"><table><thead><tr>@for(col of listColumns();track col){<th>{{columnLabel(col)}}</th>}<th aria-label="Действия"></th></tr></thead><tbody>
 @for(row of rows();track row['versionId']||row['id']||row['name']){<tr>
-@for(col of current().columns;track col){<td [class.state]="col==='state'||col==='status'">{{col==='jobPlatformIds'?selectedPlatforms(row).map(platformName).join(', '):display(col,row[col])}}</td>}
-<td class="actions">
+@for(col of listColumns();track col){<td [attr.data-label]="columnLabel(col)" [class.state]="col==='state'||col==='status'||col==='evaluationDecision'" [class.evaluation-reason]="col==='evaluationRationale'">
+@if(col==='url'&&safeLink(row[col]);as url){<a [href]="url" target="_blank" rel="noopener noreferrer">{{row[col]}}</a>}
+@else if(section()==='applications'&&col==='vacancyId'){<button type="button" class="text-button application-title" (click)="openApplication(row)">{{display(col,row[col])}}</button>}
+@else if(section()==='applications'&&col==='state'){<span class="application-status" [attr.data-state]="row[col]">{{display(col,row[col])}}</span>}
+@else if(col==='vacancyId'&&vacancyUrl(row);as url){<a [href]="url" target="_blank" rel="noopener noreferrer">{{display(col,row[col])}}</a>}
+@else if(col==='browserMode'){ {{browserModeLabels[row[col]]||'Не запущен'}} }
+@else if(col==='vacancySource'){ {{vacancySourceLabels[row[col]]||vacancySourceLabels['search']}} }
+@else if(col==='applicationStatus'){ {{applicationStatusLabels[row[col]]||row[col]}} }
+@else if(section()==='notifications'&&col==='kind'){<span class="notification-kind" [attr.data-kind]="row['kind']">{{notificationKindLabel(row['kind'])}}</span>}
+@else if(section()==='notifications'&&col==='message'){<p class="notification-message">{{row[col]}}</p>@if(row['rawMessage']&&row['rawMessage']!==row[col]){<details class="notification-details"><summary>Подробности проверки</summary><p>{{row['rawMessage']}}</p></details>}}
+@else if(['error','attentionDetails'].includes(col)&&row[col]){<details class="notification-details"><summary>{{col==='error'?'Технические подробности':'Что нужно уточнить'}}</summary><p>{{row[col]}}</p></details>}
+@else{ {{col==='jobPlatformIds'?selectedPlatforms(row).map(platformName).join(', '):display(col,row[col])}} }
+</td>}
+<td class="actions" data-label="Действия"><div class="row-actions" [class.application-row-actions]="section()==='applications'">
+@if(section()==='applications'){<button type="button" class="text-button" (click)="openApplication(row)">Просмотр</button><button type="button" class="text-button" [disabled]="saving()||!transitions(row).length" (click)="openApplication(row,true)">Изменить статус</button>}
+@else{
+@if(section()==='workflow-runs'){<details class="run-details"><summary>Подробности</summary><dl>@for(key of runDetailColumns();track key){<dt>{{columnLabel(key)}}</dt><dd>{{display(key,row[key])}}</dd>}</dl></details>}
+@if(cliDiagnosticUrl(row);as diagnostic){<a [href]="diagnostic" target="_blank" rel="noopener noreferrer">Ошибка CLI</a>}
+@if(section()!=='notifications'){@if(diagnosticUrl(row);as diagnostic){<a [href]="diagnostic+'/screen'" target="_blank" rel="noopener noreferrer">Снимок страницы</a><a [href]="diagnostic" target="_blank" rel="noopener noreferrer">Диагностика</a>}}
+@if(section()==='services'){<button class="text-button" [disabled]="saving()" (click)="command('services/'+row['role']+'/start')">Запустить</button><button class="text-button" [disabled]="saving()" (click)="command('services/'+row['role']+'/pause')">Пауза</button><button class="text-button" [disabled]="saving()" (click)="command('services/'+row['role']+'/stop')">Остановить</button>}
+@if(section()==='notifications'){
+@if(row['vacancyId']){<a [href]="recordLink('vacancies',row['vacancyId'])">Карточка вакансии</a>}
+@if(row['evaluationId']){<a [href]="recordLink('evaluations',row['evaluationId'])">Оценка и уточнения</a>}
+@if(row['applicationId']){<a [href]="recordLink('applications',row['applicationId'])">Открыть отклик</a>}
+@if(row['workflowRunId']){<a [href]="recordLink('workflow-runs',row['workflowRunId'])">Результат запуска</a>}
+@if(canPrepare(row)){<button type="button" class="text-button" [disabled]="saving()" (click)="startPreparation(row)">Подготовить отклик</button>}
+@if(safeLink(row['url'])){<a [href]="row['url']" target="_blank" rel="noopener noreferrer">Вакансия на площадке</a>}
+<button class="text-button" [disabled]="saving()||row['readAt']" (click)="command('notifications/'+row['id']+'/read')">{{row['readAt']?'Прочитано':'Отметить прочитанным'}}</button>
+@if(diagnosticUrl(row);as diagnostic){<a [href]="diagnostic+'/screen'" target="_blank" rel="noopener noreferrer">Снимок страницы</a><a [href]="diagnostic" target="_blank" rel="noopener noreferrer">Диагностика</a>}}
+@if(['vacancies','evaluations'].includes(section())&&canPrepare(row)){<button type="button" class="text-button" [disabled]="saving()" (click)="startPreparation(row)">Подготовить отклик</button>}
+@if(section()==='resumes'&&row['origin']!=='AgentGenerated'){<button class="text-button" (click)="dossierVersion=row;dossierAgentId=''">Извлечь досье агентом</button>}
+@if(section()==='generated-resumes'){<a [href]="'/api/resumes/versions/'+row['versionId']+'/download'">Скачать PDF</a><a [href]="'/api/resumes/versions/'+row['sourceResumeVersionId']+'/download'">Исходный PDF</a><button class="text-button" (click)="result.set(row['adaptationJson'])">Факты адаптации</button><button class="text-button" (click)="navigate('executions');query.set(row['agentExecutionId'])">Вызов агента</button>@if(vacancyUrl(row)){<a [href]="vacancyUrl(row)" target="_blank" rel="noopener noreferrer">Открыть вакансию</a>}}
+@if(section()==='dossier-proposals'){<button class="text-button" (click)="result.set(row['profileJson'])">Просмотреть предложение</button><button class="text-button" [disabled]="saving()||row['confirmedAt']" (click)="confirmDossier(row)">Подтвердить досье</button>}
 @if(section()==='integrations'){
  @if(row['kind']==='csv'){<button class="text-button" (click)="importIntegration=row;csvText=''">Импорт CSV</button>}
  @else{<button class="text-button" [disabled]="saving()||!row['enabled']" (click)="command('integrations/'+row['id']+'/pull')">Прочитать источник</button><button class="text-button" (click)="secretConnection=row;secretJson='{}'">Секреты</button>}
+ @if(row['kind']==='csv'||row['kind']==='google-sheets'){
+   @if(row['journalApprovalPending']){<button type="button" class="text-button" [disabled]="saving()" (click)="declareNoPriorJournal(row)">Старого журнала нет</button>}
+   @else if(!row['importConfirmed']){<span>Старого журнала нет</span>}
+ }
 }
 @if(section()==='integrations'&&['google-sheets','gmail'].includes(row['kind'])){<button class="text-button" [disabled]="saving()" (click)="connectGoogle(row)">Подключить Google</button>}
-@if(section()==='integrations'&&row['kind']==='google-sheets'){<button class="text-button" [disabled]="saving()||!row['enabled']||!row['importConfirmed']" (click)="openSheetExport(row)">Экспорт в Sheets</button>}
+@if(section()==='integrations'&&row['kind']==='google-sheets'){<button class="text-button" [disabled]="saving()||!row['enabled']" (click)="openSheetExport(row)">Экспорт в Sheets</button>}
 @if(section()==='imports'){<button class="text-button" (click)="result.set(row['rowsJson'])">Просмотр строк</button><button class="text-button" [disabled]="saving()||row['status']!=='Preview'" (click)="command('imports/'+row['id']+'/confirm')">Подтвердить импорт</button>}
 @if(section()==='feedback'){<button class="text-button" (click)="feedbackEvent=row;feedbackApplicationId=''">Связать с откликом</button><button class="text-button" (click)="result.set(row['body'])">Прочитать</button><button class="text-button" [disabled]="saving()||!row['needsAction']" (click)="command('feedback/'+row['id']+'/acknowledge')">Отметить обработанным</button>}
 @if(section()==='mcp'){<button class="text-button" [disabled]="saving()||!row['enabled']" (click)="command('mcp/'+row['id']+'/discover')">Проверить инструменты</button><button class="text-button" (click)="secretConnection=row;secretJson='{}'">Секреты</button>}
 @if(section()==='workflows'){<button class="text-button" [disabled]="saving()||!row['enabled']" (click)="command('workflows/'+row['id']+'/run')">Запустить workflow</button>}
-@if(section()==='evaluations'){<button class="text-button" (click)="result.set(row['resultJson'])">Обоснование</button>}
-@if(section()==='applications'){<button class="text-button" [disabled]="!['Drafting','ReadyForReview'].includes(row['state'])" (click)="editLetter(row)">Письмо</button>}
-@if(['profiles','agents','providers','workflows','mcp','integrations','tasks','accounts'].includes(section())){<button class="text-button" (click)="edit(row)">Изменить</button>}
+@if(section()==='workflows'&&row['executionMode']==='browser'&&row['browserProfileId']){<button class="text-button" [disabled]="saving()" (click)="showWorkflowBrowser(row)">Открыть браузер для входа</button>}
+@if(section()==='evaluations'){
+<details class="evaluation-details"><summary>Подробности оценки</summary><dl>
+@for(group of evaluationLists;track group.key){<dt>{{group.label}}</dt><dd>
+@if(row[group.key]?.length){<ul>@for(item of row[group.key];track $index){<li>{{item}}</li>}</ul>}
+@else{Не указано.}
+</dd>}
+</dl>
+@if(row['candidateQuestions']?.length){<p><strong>Вопросы к кандидату</strong></p><ul>@for(question of row['candidateQuestions'];track $index){<li>{{question}}</li>}</ul>}
+@if(row['historicalEvaluationNotes']?.length){<p><strong>Заметки прежней оценки</strong></p><ul>@for(note of row['historicalEvaluationNotes'];track $index){<li>{{note}}</li>}</ul>}
+</details>
+}
+@if(['profiles','agents','providers','workflows','mcp','integrations','tasks','accounts','platforms'].includes(section())){<button class="text-button" [disabled]="saving()" (click)="edit(row)">Изменить</button>}
+@if(section()==='platforms'&&row['adapter']!=='test-form'&&safeLink(row['url'])){<button type="button" class="text-button" [disabled]="saving()||loading()" [attr.aria-label]="'Авторизоваться на площадке '+row['name']" (click)="authorizePlatform(row)">{{platformLoginOpeningId===row['id']?'Открываем браузер…':'Авторизоваться'}}</button>}
 @if(section()==='agents'){<button class="text-button" (click)="copy(row)">Копировать</button><button class="text-button" (click)="activeAgent=row;agentInput=''" [disabled]="!row['enabled']">Запустить</button>}
 @if(section()==='providers'){<button class="text-button" [disabled]="saving()||!row['enabled']" (click)="command('providers/'+row['id']+'/test')">Проверить</button>}
 @if(section()==='resumes'){<button class="text-button" [disabled]="saving()||row['isPrimary']" (click)="command('resumes/'+row['id']+'/primary')">Сделать основным</button><a [href]="'/api/resumes/versions/'+row['versionId']+'/download'">Скачать</a>}
 @if(section()==='platforms'&&['headhunter','greenhouse'].includes(row['adapter'])){<button class="text-button" [disabled]="saving()" (click)="command('platforms/'+row['id']+'/discover')">Найти вакансии</button>}
 @if(section()==='platforms'&&row['adapter']==='test-form'){<button class="text-button" [disabled]="saving()" (click)="command('platforms/'+row['id']+'/discover')">Извлечь тестовую вакансию</button>}
-@if(section()==='vacancies'){<button class="text-button" [disabled]="saving()" (click)="evaluate(row)">Оценить</button>}
+@if(section()==='vacancies'){
+ @if(latestEvaluation(row)){<button class="text-button" (click)="showEvaluation(row)">Открыть оценки</button>@if(!row['isArchived']){<button class="text-button" [disabled]="saving()||!profileId" (click)="evaluate(row,true)">Переоценить по правилам</button>}}
+ @else if(!row['isArchived']){<button class="text-button" [disabled]="saving()||!profileId" (click)="evaluate(row)">Оценить по правилам</button>}
+ @if(row['isArchived']){<button class="text-button" [disabled]="saving()" (click)="restoreVacancy(row)">Восстановить</button>}
+ @else{<button class="text-button" [disabled]="saving()" (click)="removeVacancy(row)">Удалить из поиска</button>}
+}
 @if(section()==='tasks'){<button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+'/run')">Запустить</button><button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+(row['enabled']?'/pause':'/resume'))">{{row['enabled']?'Пауза':'Включить'}}</button><button class="text-button" [disabled]="saving()" (click)="command('tasks/'+row['id']+'/stop')">Остановить</button>}
 @if(section()==='browser-profiles'){<button class="text-button" [disabled]="saving()" (click)="command('browser-profiles/'+row['id']+(row['busy']?'/close':'/open'))">{{row['busy']?'Закрыть':'Авторизоваться'}}</button><button class="text-button danger" [disabled]="saving()||row['busy']" (click)="removeBrowser(row)">Удалить</button>}
-@if(section()==='applications'&&!row['isTest']&&row['state']==='ReadyToSubmit'){<button class="text-button" [disabled]="saving()" (click)="recordManualSubmission(row)">Отметить отправленным вручную</button>}
-@if(section()==='applications'&&!row['isTest']&&row['state']==='ReadyToSubmit'&&vacancyUrl(row);as url){<button class="text-button" [disabled]="saving()" (click)="openBrowserDraft(row)">Заполнить в браузере</button><a [href]="url" target="_blank" rel="noopener noreferrer">Открыть вакансию</a>}
-@if(section()==='applications'&&row['isTest']&&row['state']==='ReadyToSubmit'){<button class="text-button" [disabled]="saving()" (click)="testSubmit(row)">Проверить тестовую отправку</button>}
-@if(section()==='applications'&&row['state']==='Submitting'){<button class="text-button" [disabled]="saving()" (click)="command('applications/'+row['id']+'/mark-unknown')">Зафиксировать неизвестный результат</button>}
-@if(section()==='applications'){@for(next of transitions(row);track next){<button class="text-button" [disabled]="saving()" (click)="command('applications/'+row['id']+'/transition',{state:next,revision:row['revision']})">{{next}}</button>}}
-</td></tr>}</tbody></table></div>}
-@else{<div class="empty"><h2>{{query()?'Совпадений нет':'Здесь пока нет записей'}}</h2><p>{{query()?'Попробуйте другой запрос.':'Данные появятся после настройки или первого запуска. Демонстрационные записи не добавляются автоматически.'}}</p></div>}}
+@if(section()==='browser-profiles'){<button class="text-button" [disabled]="saving()" (click)="showRemoteBrowser(row['id'])">Управлять браузером</button>}
+}
+</div></td></tr>}</tbody></table></div>}
+@else if(!data()[section()]){
+  <div class="empty" role="status">{{loading() ? 'Загружаем записи…' : 'Данные раздела не получены.'}}</div>
+}
+@else if(recordId()){
+  <div class="empty"><h2>Связанная запись не найдена</h2><button type="button" class="secondary" (click)="clearRecord()">Вернуться к списку</button></div>
+}
+@else if(hasApplicationFilter()){
+  <div class="empty"><h2>{{query()?'Совпадений нет':'Нет откликов с выбранными статусами'}}</h2>
+    <button type="button" class="secondary" (click)="applicationStatusFilter.set([])">Сбросить фильтр статусов</button>
+  </div>
+}
+@else{<div class="empty"><h2>{{query()||hasVacancyFilters()?'Совпадений нет':section()==='vacancies'&&vacancyArchive()?'Архив пуст':'Здесь пока нет записей'}}</h2><p>{{hasVacancyFilters()?'Измените фильтры статуса и оценки или поисковый запрос.':query()?'Попробуйте другой запрос.':section()==='vacancies'&&vacancyArchive()?'Здесь будут вакансии, удалённые из поиска. Их можно восстановить вместе с сохранённой историей.':'Данные появятся после настройки или первого запуска. Демонстрационные записи не добавляются автоматически.'}}</p></div>}}
+@if(googleConnection&&section()==='integrations'){
+<section class="editor" aria-labelledby="google-connection-title"><h2 id="google-connection-title">Подключение Google: {{googleConnection['name']}}</h2>
+<p>Google требует входа через обычный браузер. Текущий OAuth-клиент типа Desktop app возвращает результат на компьютер, где работает JobFlow.</p>
+<ol><li>На компьютере с JobFlow откройте в обычном Chrome, Edge или Firefox адрес <a href="http://127.0.0.1:5271/#integrations" target="_blank" rel="noopener noreferrer">http://127.0.0.1:5271/#integrations</a>.</li><li>У нужной интеграции нажмите «Подключить Google» и подтвердите доступ.</li><li>Вернитесь сюда и обновите список. После входа мониторинг работает в фоне, браузер можно закрыть.</li></ol>
+<p>Если открыть ссылку на другом компьютере, localhost укажет на него, а не на сервер JobFlow.</p>
+<div class="form-actions"><button type="button" class="secondary" [disabled]="loading()" (click)="refresh()">Обновить список</button><button type="button" class="secondary" (click)="googleConnection=null">Закрыть</button></div></section>
+}
 @if(activeAgent){<section class="editor"><h2>Запустить: {{activeAgent['name']}}</h2><p>Данные будут переданы провайдеру. Не включайте лишние персональные сведения.</p><label>Входные данные<textarea [(ngModel)]="agentInput" rows="5"></textarea></label><div class="form-actions"><button class="primary" (click)="execute()" [disabled]="saving()">{{saving()?'Выполняется…':'Передать данные и запустить'}}</button><button class="secondary" (click)="activeAgent=null">Закрыть</button></div></section>}
-@if(draftApplication){<section class="editor"><h2>Проверить письмо</h2><p>Проверьте факты и требования перед одобрением. AI-черновик не подтверждает опыт.</p><label>Текст письма<textarea [(ngModel)]="draftLetter" rows="12"></textarea></label><div class="form-actions"><button class="primary" [disabled]="saving()" (click)="saveLetter()">Сохранить письмо</button><button class="secondary" (click)="draftApplication=null">Закрыть</button></div></section>}
+@if(remoteBrowserId){
+<section class="editor remote-browser" aria-labelledby="remote-browser-heading"><h2 id="remote-browser-heading" tabindex="-1">{{remotePlatformName?'Вход на '+remotePlatformName:'Вход в площадки через браузерный профиль'}}</h2>
+@if(remotePlatformName){<p>Браузерный профиль: <strong>{{display('browserProfileId',remoteBrowserId)}}</strong></p>}
+<p>Откройте площадку, нажмите на поле в изображении и введите данные. Авторизация сохранится в этом профиле для агента.</p>
+@if(remoteBusy){<p role="status">Выполняется действие в браузере… Экран обновляется автоматически.</p>}
+@if(remoteError){<div class="notice error" role="alert">{{remoteError}}{{remoteScreen?' Последний полученный кадр сохранён.':''}}</div>}
+<button type="button" class="secondary" [disabled]="remoteUpdating" (click)="updateRemoteBrowser()">{{remoteUpdating?'Обновление экрана…':'Обновить экран'}}</button>
+@if(!remoteScreen){<p role="status">{{remoteImageLoading?'Получаю изображение браузера…':'Изображение браузера пока не получено. Нажмите «Обновить экран».'}}</p>}
+<label>Вкладка<select [(ngModel)]="remoteTab" (ngModelChange)="updateRemoteBrowser()">@for(tab of remoteTabs;track tab['index']){<option [ngValue]="tab['index']">{{tab['title']||tab['url']}}</option>}</select></label>
+<div class="remote-address"><label>Адрес сайта<input id="remote-browser-address" type="url" [(ngModel)]="remoteUrl" placeholder="https://hh.ru" (keydown.enter)="remoteControl('navigate',remoteUrl)"></label><button class="secondary" [disabled]="remoteBusy||!remoteUrl" (click)="remoteControl('navigate',remoteUrl)">Открыть</button></div>
+<div class="remote-screen" tabindex="0" aria-label="Экран браузера. Нажмите на поле и вводите текст; Tab переключает поля." (keydown)="remoteKey($event)">
+@if(remoteScreen){<img [src]="remoteScreen" alt="Текущая вкладка сохранённого браузерного профиля" (click)="remoteClick($event)">}
+</div>
+<div class="remote-address"><label>Текст для выбранного поля<input [type]="remoteHidden?'password':'text'" autocomplete="off" [(ngModel)]="remoteText" placeholder="Можно вставить логин или пароль" (keydown.enter)="sendRemoteText()"></label><button class="secondary" [disabled]="remoteBusy||!remoteText" (click)="sendRemoteText()">Ввести текст</button></div>
+<label class="checkbox"><input type="checkbox" [(ngModel)]="remoteHidden">Скрывать вводимый текст</label>
+<div class="form-actions"><button class="secondary" (click)="remoteControl('key','Tab')">Tab</button><button class="secondary" (click)="remoteControl('key','Enter')">Enter</button><button class="secondary" (click)="remoteControl('key','Backspace')">Стереть</button><button class="secondary" (click)="remoteControl('scroll','',0,-550)">Прокрутить вверх</button><button class="secondary" (click)="remoteControl('scroll','',0,550)">Прокрутить вниз</button><button class="secondary" (click)="closeRemoteBrowser()">Завершить просмотр</button></div>
+</section>
+}
+@if(draftApplication){<section class="editor" id="application-letter-editor"><h2>Проверить письмо</h2><p>Проверьте факты и требования перед одобрением. AI-черновик не подтверждает опыт.</p><label>Текст письма<textarea [(ngModel)]="draftLetter" rows="12"></textarea></label><div class="form-actions"><button class="primary" [disabled]="saving()" (click)="saveLetter()">Сохранить письмо</button><button class="secondary" (click)="draftApplication=null">Закрыть</button></div></section>}
 @if(secretConnection){<section class="editor"><h2>Секреты: {{secretConnection['name']}}</h2><p>JSON-объект переменных окружения для stdio или HTTP-заголовков. Существующие значения не показываются. Сохранение заменит набор целиком.</p><label>Значения<textarea [(ngModel)]="secretJson" autocomplete="off" rows="5"></textarea></label><div class="form-actions"><button class="primary" [disabled]="saving()" (click)="saveSecrets()">Сохранить секреты</button><button class="secondary" (click)="secretConnection=null;secretJson='{}'">Отмена</button></div></section>}
 @if(importIntegration){<section class="editor"><h2>Импорт: {{importIntegration['name']}}</h2><p>Загрузите CSV или вставьте текст. Предварительный просмотр не создаёт вакансий. Подтверждение — в разделе «Импорт журналов».</p><label>Файл CSV<input type="file" accept=".csv,text/csv" (change)="selectCsv($event)"></label><label>Содержимое CSV<textarea [(ngModel)]="csvText" rows="8"></textarea></label><div class="form-actions"><button class="primary" [disabled]="saving()||!csvText" (click)="previewImport()">Предварительный просмотр</button><button class="secondary" (click)="importIntegration=null;csvText=''">Закрыть</button></div></section>}
+@if(externalReviewApplication){
+<section class="editor external-review" aria-labelledby="external-review-heading">
+<h2 id="external-review-heading">Проверка внешнего отклика</h2>
+@if(externalReview;as review){
+@let report=review['report'];
+<p><strong>{{report.routedPlatform?'Переход на '+report.routedPlatform:report.verified?'Работодатель и вакансия сопоставлены':'Подлинность формы не подтверждена'}}</strong>. {{report.reason}}</p>
+<p>Исходная вакансия: <a [href]="safeLink(report.sourceUrl)" target="_blank" rel="noopener noreferrer">{{report.sourceUrl}}</a></p>
+<p>Адрес назначения: @if(report.verified||report.routedPlatform){<a [href]="safeLink(report.url)" target="_blank" rel="noopener noreferrer">{{report.url}}</a>}@else{<span>{{report.url}}</span>}</p>
+@if(report.verified){<p>Основания сопоставления: «{{report.employerEvidence}}», «{{report.vacancyEvidence}}».</p>}
+@if(report.fields.length){
+<h3>Поля на момент передачи</h3>
+<dl>@for(field of report.fields;track $index){<dt>{{field.label}}</dt><dd>{{field.value||'Не заполнено'}}</dd>}</dl>
+}
+@if(review['hasScreenshot']){<details><summary>Снимок заполненной страницы</summary><img class="external-review-screen" [src]="'/api/applications/'+externalReviewApplication['id']+'/browser-draft/screen'" alt="Сохранённая форма отклика перед ручной проверкой"></details>}
+<p>Автоматической отправки не было. После проверки вы получите управление браузером и сможете завершить отклик вручную.</p>
+@if(!review['live']){<p role="status">Заполненная вкладка закрыта. Снимок и поля сохранены; откройте сайт через браузерный профиль и заполните форму заново.</p>}
+<div class="form-actions">
+@if(report.verified&&['ReadyForReview','ReadyToSubmit'].includes(externalReviewApplication['state'])){<button class="primary" [disabled]="saving()||!review['live']" (click)="takeOverExternalDraft()">Проверил — продолжить вручную</button>}
+<button class="secondary" (click)="externalReview=null;externalReviewApplication=null">Закрыть проверку</button>
+</div>
+}@else{<p role="status">{{saving()?'Загружаем сохранённую форму…':'Не удалось открыть проверку. Повторите загрузку.'}}</p><button class="secondary" (click)="externalReviewApplication=null">Закрыть проверку</button>}
+</section>
+}
 @if(browserDraft){
 <section class="editor">
 <h2>Заполнение формы отклика</h2>
@@ -107,11 +418,29 @@
 }
 @if(feedbackEvent){<section class="editor"><h2>Связать сообщение с откликом</h2><p>{{feedbackEvent['subject']}}</p><label>Отправленный отклик<select [(ngModel)]="feedbackApplicationId"><option value="">Выберите…</option>@for(a of feedbackApplications();track a['id']){<option [value]="a['id']">{{display('vacancyId',a['vacancyId'])}}</option>}</select></label><div class="form-actions"><button class="primary" [disabled]="saving()||!feedbackApplicationId" (click)="linkFeedback()">Подтвердить связь</button><button class="secondary" (click)="feedbackEvent=null">Закрыть</button></div></section>}
 @if(sheetIntegration){
-<section class="editor">
-<h2>Экспорт в Google Sheets</h2>
-<p>Создайте отдельную пустую вкладку в той же таблице. Экспорт заменяет содержимое A1:F501 на этой вкладке.</p>
-<label>Название вкладки<input [ngModel]="sheetTab" (ngModelChange)="sheetTab=$event;sheetPreview=null" maxlength="60"></label>
-<div class="form-actions"><button class="primary" [disabled]="saving()||!sheetTab.trim()" (click)="previewSheet()">Предпросмотр</button><button class="secondary" (click)="sheetIntegration=null;sheetPreview=null">Закрыть</button></div>
+<section class="editor" aria-labelledby="sheets-export-title">
+<h2 id="sheets-export-title">Экспорт в Google Sheets</h2>
+<p>{{sheetIntegration['name']}} · {{display('candidateProfileId',sheetIntegration['candidateProfileId'])}}</p>
+<label class="checkbox"><input #newJournal type="checkbox" [checked]="sheetStartNewJournal" [disabled]="saving()" (change)="sheetStartNewJournal=newJournal.checked;sheetPreview=null"><span>Начать новый журнал без импорта</span></label>
+@if(sheetStartNewJournal){<p>JobFlow выгрузит текущие отклики в указанный файл. История не будет отмечена как импортированная.</p>}
+@else if(!sheetIntegration['importConfirmed']){<p>Импорт истории не подтверждён. Если старого журнала нет, выберите режим нового журнала.</p>}
+<div class="form-grid">
+  <label>Файл Google Sheets<input [ngModel]="sheetFile" (ngModelChange)="sheetFile=$event;sheetPreview=null" [disabled]="saving()" [required]="sheetStartNewJournal" placeholder="Ссылка на Google Sheets или ID файла" maxlength="500" aria-describedby="sheets-file-help">
+    <small id="sheets-file-help">{{sheetStartNewJournal?'Для нового журнала укажите файл.':'Если оставить пустым, используем файл из интеграции.'}}</small>
+  </label>
+  <label>Название вкладки<input [ngModel]="sheetTab" (ngModelChange)="sheetTab=$event;sheetPreview=null" [disabled]="saving()" maxlength="60"></label>
+  <fieldset class="wide" [disabled]="saving()">
+    <legend>Площадки для выгрузки</legend>
+    <label class="checkbox"><input type="checkbox" [checked]="sheetAllPlatforms" (change)="sheetAllPlatforms=!sheetAllPlatforms;sheetPreview=null"><span>Все площадки</span></label>
+    <div class="form-grid">
+      @for(platform of data()['platforms']??[];track platform['id']){
+        <label class="checkbox"><input #sheetPlatform type="checkbox" [checked]="sheetAllPlatforms||sheetPlatformIds.includes(platform['id'])" [disabled]="sheetAllPlatforms" (change)="toggleSheetPlatform(platform['id'],sheetPlatform.checked)"><span>{{platform['name']}}</span></label>
+      }
+    </div>
+  </fieldset>
+</div>
+<p>Используйте пустую или ранее выгруженную в этом формате вкладку. После подтверждения выбранные отклики заменят прежние строки выгрузки в диапазоне A1:H501.</p>
+<div class="form-actions"><button class="primary" [disabled]="saving()||!canPreviewSheet()" (click)="previewSheet()">Предпросмотр</button><button class="secondary" [disabled]="saving()" (click)="sheetIntegration=null;sheetPreview=null">Закрыть</button></div>
 @if(sheetPreview;as preview){
 <p>Записей на вкладке: {{preview.existing.length ? preview.existing.length-1 : 0}}. Будет записано: {{preview.rows.length-1}}.</p>
 <details><summary>Значения до записи</summary><pre>{{preview.existing | json}}</pre></details>
@@ -119,6 +448,11 @@
 <div class="form-actions"><button class="primary" [disabled]="saving()" (click)="confirmSheet()">Подтвердить запись в Sheets</button></div>
 }
 </section>
+}
+@if(dossierVersion&&section()==='resumes'){
+<section class="editor"><h2>Извлечь досье из PDF</h2><p>{{dossierVersion['originalName']}}. Агент предложит факты; профиль изменится только после вашего подтверждения.</p>
+<label>CLI-агент извлечения досье<select [(ngModel)]="dossierAgentId"><option value="">Выберите агента</option>@for(agent of dossierAgents();track agent['id']){<option [value]="agent['id']">{{agent['name']}}</option>}</select></label>
+<div class="form-actions"><button class="primary" [disabled]="saving()||!dossierAgentId" (click)="proposeDossier()">Подготовить предложение</button><button class="secondary" (click)="dossierVersion=null">Закрыть</button></div></section>
 }
 @if(result()){<section class="result"><h2>Результат действия</h2><pre>{{result()}}</pre></section>}
 <footer>JobFlow · Локальный режим · Внешние подключения включаются пользователем</footer>

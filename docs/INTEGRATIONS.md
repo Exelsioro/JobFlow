@@ -2,6 +2,8 @@
 
 ## Подготовка откликов
 
+Для исходного сценария «войти в площадки → агент ищет и отправляет → почта и учёт» используйте режим workflow `browser`, общий браузерный профиль и шаблон агента `BrowserAutomation`. Пошаговая настройка находится в [README](../README.md#браузерный-поиск-и-автоматические-отклики). Этот режим использует браузерные авторизации. Описанный ниже `prepare` использует API/импорт и ручное одобрение.
+
 Создайте профиль, загрузите PDF и площадку. Для локальной проверки используйте test-form: URL не посещается, данные искусственные. Для своих вакансий используйте search-only и импорт.
 
 Для HeadHunter выберите `headhunter` и введите поисковый запрос. За запуск читается до 50 вакансий из [HeadHunter API](https://api.hh.ru/openapi/redoc). Для Greenhouse выберите `greenhouse`, задайте имя работодателя как название площадки и введите токен доски из URL, например `mycompany` для `job-boards.greenhouse.io/mycompany`. Вакансии читаются из [Job Board API](https://docs.greenhouse.io/job-board.html). После одобрения письма ссылка «Открыть вакансию» ведёт к форме площадки для ручной работы.
@@ -51,7 +53,7 @@ Sheets endpoint: https://sheets.googleapis.com/v4/spreadsheets/SPREADSHEET_ID/va
 
 ## Google OAuth
 
-В Google Cloud включите нужные API, настройте OAuth consent screen и создайте клиент типа Desktop app. Если приложение в режиме Testing, добавьте свой аккаунт в список тестовых пользователей. Установите `JOBFLOW_GOOGLE_CLIENT_ID` и `JOBFLOW_GOOGLE_CLIENT_SECRET` в окружении API и Worker. Перезапустите оба процесса и откройте JobFlow через http://127.0.0.1:5271. В интеграции нажмите «Подключить Google», затем подтвердите доступ в Google. Callback использует loopback и одноразовое состояние с PKCE. Токены хранятся в зашифрованном хранилище, просроченный access token обновляется при запуске интеграции. Для Gmail запрашивается gmail.readonly, для Sheets — spreadsheets. При отозванном доступе подключите Google снова.
+В Google Cloud включите нужные API, настройте OAuth consent screen и создайте клиент типа Desktop app. Если приложение в режиме Testing, добавьте свой аккаунт в список тестовых пользователей. Установите `JOBFLOW_GOOGLE_CLIENT_ID` и `JOBFLOW_GOOGLE_CLIENT_SECRET` в окружении API и Worker. Перезапустите оба процесса и откройте JobFlow. В интеграции нажмите «Подключить Google», затем подтвердите доступ в Google. Для Desktop OAuth один раз откройте http://127.0.0.1:5271/#integrations в обычном браузере на компьютере с JobFlow и нажмите «Подключить Google». При доступе по LAN интерфейс показывает эти инструкции: Google может отклонять автоматизированные браузеры, а loopback callback должен вернуться на компьютер с API. После подключения мониторинг работает независимо от браузера. Callback использует loopback и одноразовое состояние с PKCE. Токены хранятся в зашифрованном хранилище, просроченный access token обновляется при запуске интеграции. Для Gmail запрашивается gmail.readonly, для Sheets — spreadsheets. При отозванном доступе подключите Google снова.
 
 Ручной заголовок Authorization по-прежнему доступен в «Секретах». Сохранение набора заголовков заменяет сохранённый OAuth grant. Документация: [Google OAuth для Desktop apps](https://developers.google.com/identity/protocols/oauth2/native-app), [Sheets values.update](https://developers.google.com/workspace/sheets/api/reference/rest/v4/spreadsheets.values/update).
 

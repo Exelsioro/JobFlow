@@ -86,6 +86,62 @@ public class JournalTests
         Assert.Contains(await fixture.Db.Audit.ToListAsync(), x => x.Action == "SheetsExported");
     }
 
+    [Fact]
+    public async Task SheetsExportBindsSelectedPlatformsAndDestinationToPreview()
+    {
+        await using var fixture = await Fixture.Create();
+        var integration = fixture.Integration;
+        integration.Kind = "google-sheets";
+        integration.Endpoint = "https://sheets.googleapis.com/v4/spreadsheets/default-file/values/Import!A1:C10";
+        integration.Enabled = integration.ImportConfirmed = true;
+        var primary = await fixture.Db.Platforms.SingleAsync();
+        primary.Name = "Board A";
+        var second = new JobPlatform { Name = "Board B" };
+        var third = new JobPlatform { Name = "Board C" };
+        fixture.Db.AddRange(second, third);
+        await fixture.Db.SaveChangesAsync();
+        await AddApplication(fixture, "shared", primary.Id);
+        await AddApplication(fixture, "shared", second.Id);
+        await AddApplication(fixture, "third", third.Id);
+
+        using var handler = new ExportRecordingHandler();
+        using var http = new HttpClient(handler);
+        var writer = new SheetsWriteBack(fixture.Db, new SecretStore(fixture.Root), http);
+        Guid[] selection = [primary.Id, second.Id];
+        const string destination = "https://docs.google.com/spreadsheets/d/selected-file/edit#gid=3";
+        var preview = await writer.PreviewAsync(integration.Id, "Combined", default, platformIds: selection, spreadsheet: destination);
+        Assert.Equal(["Platform", "Platform ID"], preview.Rows[0][6..]);
+        Assert.Equal(3, preview.Rows.Length);
+        Assert.All(preview.Rows.Skip(1), row => Assert.Equal("shared", row[1]));
+        Assert.Equal(new[] { "Board A", "Board B" }, preview.Rows.Skip(1).Select(row => row[6]).Order().ToArray());
+        Assert.Contains("/spreadsheets/selected-file/values/'Combined'!A1:H501", Uri.UnescapeDataString(handler.LastUri!.AbsolutePath));
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => writer.PreviewAsync(integration.Id, "Combined", default,
+            preview.Digest, selection, spreadsheet: "different-file"));
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => writer.PreviewAsync(integration.Id, "Combined", default,
+            preview.Digest, allPlatforms: true, spreadsheet: destination));
+        Assert.Equal(0, handler.Writes);
+        await writer.PreviewAsync(integration.Id, "Combined", default, preview.Digest, [second.Id, primary.Id], spreadsheet: "selected-file");
+        Assert.Equal(1, handler.Writes);
+        var all = await writer.PreviewAsync(integration.Id, "Combined", default, allPlatforms: true);
+        Assert.Equal(4, all.Rows.Length);
+        Assert.Contains("/spreadsheets/default-file/", handler.LastUri!.AbsolutePath);
+
+        integration.ImportConfirmed = false;
+        integration.Endpoint = "";
+        await fixture.Db.SaveChangesAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => writer.PreviewAsync(integration.Id, "Combined", default,
+            allPlatforms: true, spreadsheet: destination));
+        await Assert.ThrowsAsync<ArgumentException>(() => writer.PreviewAsync(integration.Id, "Combined", default,
+            allPlatforms: true, startNewJournal: true));
+        var newJournal = await writer.PreviewAsync(integration.Id, "Combined", default,
+            allPlatforms: true, spreadsheet: destination, startNewJournal: true);
+        await writer.PreviewAsync(integration.Id, "Combined", default, newJournal.Digest,
+            allPlatforms: true, spreadsheet: destination, startNewJournal: true);
+        Assert.Equal(2, handler.Writes);
+        Assert.False((await fixture.Db.Set<Integration>().AsNoTracking().SingleAsync()).ImportConfirmed);
+        Assert.Empty(await fixture.Db.Set<JournalImport>().ToListAsync());
+    }
+
     [Theory]
     [InlineData(false, "Invitation")]
     [InlineData(true, "Rejection")]
@@ -128,6 +184,48 @@ public class JournalTests
     }
 
     [Fact]
+    public async Task HeadHunterChatsReadEmployerMessagesWithoutSendingAndLinkByVacancy()
+    {
+        await using var fixture = await Fixture.Create();
+        var app = await AddApplication(fixture, "123");
+        var integration = fixture.Integration;
+        integration.Kind = "hh-chats";
+        integration.Endpoint = "https://api.hh.ru/common/chats";
+        integration.Enabled = true;
+        (await fixture.Db.Platforms.SingleAsync()).Url = "https://rabota.by/";
+        await fixture.Db.SaveChangesAsync();
+        var secrets = new SecretStore(fixture.Root);
+        await secrets.SaveAsync(integration.Id, new() { ["Authorization"] = "Bearer synthetic" }, default);
+        using var http = new HttpClient(new ChatsHandler());
+        var source = new RemoteIntegrationService(fixture.Db, secrets, http);
+        await source.PullAsync(integration.Id, default);
+        await source.PullAsync(integration.Id, default);
+        Assert.Equal(ApplicationState.EmployerResponded, app.State);
+        var message = await fixture.Db.Set<FeedbackEvent>().SingleAsync();
+        Assert.Equal("hh-chat:abc:1:123", message.SourceEventId);
+        Assert.False(message.NeedsAction);
+        Assert.Equal(app.Id, (await fixture.Db.Set<EmployerInteraction>().SingleAsync()).JobApplicationId);
+        Assert.Empty(await fixture.Db.Set<ApplicationAttempt>().ToListAsync());
+    }
+
+    private sealed class ChatsHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("api.hh.ru", request.RequestUri!.Host);
+            Assert.Contains("host=rabota.by", request.RequestUri.Query);
+            string body = request.RequestUri.AbsolutePath switch
+            {
+                "/common/chats" => """{"items":[{"id":"abc"}]}""",
+                "/common/chats/abc/messages" => """{"vacancy_id":"123","display":{"title":"Test job"},"messages":[{"id":"1","creation_time":"2099-01-01T10:00:00+00:00","sender_display_info":{"role":"EMPLOYER","is_current_participant":false},"payload":{"text":"We invite you to an interview"}},{"id":"2","creation_time":"2099-01-01T10:00:00+00:00","sender_display_info":{"role":"APPLICANT","is_current_participant":true},"payload":{"text":"My reply"}}]}""",
+                _ => throw new InvalidOperationException("Unexpected chat endpoint.")
+            };
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) });
+        }
+    }
+
+    [Fact]
     public async Task HeadHunterStatusReadsApplicantNegotiationsAndKeepsNewestObservation()
     {
         await using var fixture = await Fixture.Create();
@@ -152,11 +250,11 @@ public class JournalTests
         Assert.Empty(await db.Set<ApplicationAttempt>().ToListAsync());
     }
 
-    private static async Task<JobApplication> AddApplication(Fixture fixture, string externalId)
+    private static async Task<JobApplication> AddApplication(Fixture fixture, string externalId, Guid? platformId = null)
     {
         var resume = new Resume { CandidateProfileId = fixture.Integration.CandidateProfileId };
         var version = new ResumeVersion { ResumeId = resume.Id, Version = 1 };
-        var vacancy = new Vacancy { JobPlatformId = fixture.Integration.JobPlatformId!.Value, ExternalId = externalId, Url = "https://hh.ru/vacancy/" + externalId };
+        var vacancy = new Vacancy { JobPlatformId = platformId ?? fixture.Integration.JobPlatformId!.Value, ExternalId = externalId, Url = "https://hh.ru/vacancy/" + externalId };
         var app = new JobApplication { CandidateProfileId = resume.CandidateProfileId, ResumeVersionId = version.Id, VacancyId = vacancy.Id, State = ApplicationState.Submitted };
         fixture.Db.AddRange(resume, version, vacancy, app);
         await fixture.Db.SaveChangesAsync();
@@ -171,6 +269,18 @@ public class JournalTests
             Calls++;
             Assert.Contains("Interview invitation", request.Input);
             return Task.FromResult(new JobFlow.Application.AgentExecutionResult(Guid.NewGuid(), "Succeeded", """{"category":"Rejection"}"""));
+        }
+    }
+
+    private sealed class ExportRecordingHandler : HttpMessageHandler
+    {
+        public Uri? LastUri;
+        public int Writes;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            LastUri = request.RequestUri;
+            if (request.Method == HttpMethod.Put) Writes++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") });
         }
     }
 

@@ -1,0 +1,46 @@
+@if (hasProfiles() === 0) {
+  <section class="welcome">
+    <h2>Начните с профиля кандидата</h2>
+    <p>Опыт, резюме и отклики будут привязаны к этому профилю.</p>
+    <button class="primary" (click)="createProfile.emit()">Создать профиль</button>
+  </section>
+} @else if (profile()) {
+  <div class="desk">
+    <section class="inbox" aria-labelledby="queue-title">
+      <header><h2 id="queue-title">Очередь решений</h2>@if (queue(); as q) {<span class="count">{{q.total}}</span>}</header>
+      @if (queue(); as q) {
+        <div class="queue-filters">
+          @for (group of q.groups; track group.state) {
+            <button (click)="filter.emit(group.state)">{{group.title}} <b>{{group.rows.length}}</b></button>
+          }
+        </div>
+        @for (item of q.preview; track item.id) {
+          <a class="queue-row" [href]="'#applications?record='+item.id">
+            <span><strong>{{item.vacancy?.['title'] ?? 'Карточка отклика'}}</strong><small>{{item.vacancy?.['employer']}} @if (item.isTest) { · Тестовый отклик}</small></span>
+            <span class="reason" [attr.data-state]="item.group.state">{{item.group.hint}}</span>
+          </a>
+        } @empty {<p class="quiet">Нет откликов, требующих решения.</p>}
+        <button class="list-link" (click)="filter.emit('')">Все отклики</button>
+      } @else {<p class="quiet">Данные об откликах ещё не получены.</p>}
+    </section>
+    <section class="journal" aria-labelledby="run-title">
+      <header><h2 id="run-title">Последние прогоны</h2></header>
+      @for (run of runs(); track run.row['id']) {
+        <a class="run" [href]="'#workflow-runs?record='+run.row['id']">
+          <strong>{{run.name}}</strong>
+          <span>{{run.started}} · {{runLabels[run.row['status']] ?? run.row['status']}}</span>
+          <small>Проверено: {{run.row['checked']}} · Подготовлено: {{run.row['prepared']}} · Отправлено: {{run.row['submitted']}}</small>
+        </a>
+      } @empty {<p class="quiet">{{runs() ? 'Прогонов этого профиля пока нет.' : 'История ещё не загружена.'}}</p>}
+      <a class="list-link" href="#workflow-runs">История workflow</a>
+    </section>
+  </div>
+} @else {
+  <p role="status">{{hasProfiles() === undefined ? 'Загружаем рабочее пространство…' : 'Выберите рабочий профиль.'}}</p>
+}
+<details class="tools">
+  <summary>Настройка и диагностика</summary>
+  <div class="tool-links"><a href="#resumes">Резюме и версии</a><a href="#providers">AI-провайдер</a><a href="#tasks">Фоновые задания</a></div>
+  <p>Проверить браузер на тестовой форме без отправки работодателю.</p>
+  <button class="secondary" [disabled]="busy()" (click)="testBrowser.emit()">Проверить браузер</button>
+</details>

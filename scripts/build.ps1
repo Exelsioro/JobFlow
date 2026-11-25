@@ -13,4 +13,4 @@ try {
 } finally { Pop-Location }
 New-Item -ItemType Directory src/JobFlow.Api/wwwroot -Force | Out-Null
 Copy-Item src/JobFlow.Web/dist/jobflow-web/browser/* src/JobFlow.Api/wwwroot -Recurse -Force
-Write-Host 'Built. Run API and Worker in separate terminals; see README.md.'
+Write-Host 'Built. Run scripts/start-local.ps1 for API + independent Search and Monitor processes; see README.md.'

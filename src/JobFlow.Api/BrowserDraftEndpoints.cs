@@ -11,9 +11,47 @@ public static class BrowserDraftEndpoints
 {
     public static void MapBrowserDraftEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/applications/{id:guid}/browser-draft/review", async (Guid id, JobFlowDb db, BrowserSessions sessions, HttpContext context, CancellationToken ct) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            var report = await ExternalApplicationDraft.ReadAsync(db, id, ct) ?? throw new InvalidOperationException("Внешняя форма для этого отклика ещё не подготовлена.");
+            return Results.Ok(new { report, live = sessions.HasDraft(id), hasScreenshot = File.Exists(ExternalApplicationDraft.ScreenshotPath(id)) });
+        });
+        app.MapGet("/api/applications/{id:guid}/browser-draft/screen", (Guid id, HttpContext context) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            var path = ExternalApplicationDraft.ScreenshotPath(id);
+            return File.Exists(path) ? Results.File(path, "image/jpeg") : Results.NotFound();
+        });
+        app.MapPost("/api/applications/{id:guid}/browser-draft/release", async
+            (Guid id, ReleaseRequest input, JobFlowDb db, BrowserSessions sessions, CancellationToken ct) =>
+        {
+            var application = await db.Applications.SingleAsync(x => x.Id == id, ct);
+            var report = await ExternalApplicationDraft.ReadAsync(db, id, ct) ?? throw new InvalidOperationException("Сначала подготовьте внешнюю форму.");
+            if (!report.Verified || application.IsTest || application.State is not (ApplicationState.ReadyForReview or ApplicationState.ReadyToSubmit) ||
+                input.Revision != application.Revision || input.Fingerprint != report.Fingerprint ||
+                report.MaterialHash != ExternalApplicationDraft.Materials(application))
+                throw new InvalidOperationException("Отклик или резюме изменились. Подготовьте и проверьте форму заново.");
+            var page = sessions.GetDraftPage(id);
+            var capture = await ExternalApplicationDraft.CaptureAsync(page);
+            if (page.Url != report.Url || capture.Fingerprint != report.Fingerprint)
+                throw new InvalidOperationException("Открытая форма изменилась после заполнения. Проверьте её вручную через браузерный профиль.");
+            // This is a human takeover, not permission for the workflow to submit an external application.
+            var browser = await sessions.ReleaseDraftAsync(id);
+            if (application.State == ApplicationState.ReadyForReview) JobFlow.Application.Workflow.Transition(application, ApplicationState.ReadyToSubmit);
+            db.Audit.Add(new AuditEvent { EntityId = id, EntityType = nameof(JobApplication), Action = "ExternalApplicationHumanTakeover",
+                Details = JsonSerializer.Serialize(new { report.Url, report.Verified, report.Fingerprint }) });
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { browserId = browser.BrowserId, tab = browser.Tab, report.Url });
+        });
         app.MapPost("/api/applications/{id:guid}/browser-draft/open", async
             (Guid id, JobFlowDb db, BrowserSessions sessions, CancellationToken ct) =>
         {
+            if (await ExternalApplicationDraft.ReadAsync(db, id, ct) != null)
+            {
+                if (!sessions.HasDraft(id)) throw new InvalidOperationException("Заполненная вкладка закрыта. Сохранённый снимок доступен в проверке внешней формы; откройте сайт вручную через браузерный профиль.");
+                return Results.Ok(new { opened = true });
+            }
             var draft = await LoadAsync(id, db, ct);
             if (!Uri.TryCreate(draft.Vacancy.Url, UriKind.Absolute, out var url) ||
                 url.Scheme != "https" || !string.IsNullOrEmpty(url.UserInfo))
@@ -25,7 +63,7 @@ public static class BrowserDraftEndpoints
                 throw new ArgumentException("Bind one browser profile to this candidate and platform in Platform Accounts.");
             await BrowserOperation(async () =>
             {
-                await sessions.OpenDraftAsync(id, profiles[0], url.AbsoluteUri);
+                await sessions.OpenDraftAsync(id, profiles[0], url.AbsoluteUri, "headed");
                 return true;
             });
             return Results.Ok(new { opened = true });
@@ -83,4 +121,5 @@ public static class BrowserDraftEndpoints
     }
 
     public sealed record FillRequest(string Token, int FormIndex, string? ContactName);
+    public sealed record ReleaseRequest(int Revision, string Fingerprint);
 }

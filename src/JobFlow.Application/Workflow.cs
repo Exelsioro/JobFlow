@@ -1,4 +1,5 @@
 using JobFlow.Domain;
+using System.Text.Json.Serialization;
 namespace JobFlow.Application;
 
 public static class Workflow
@@ -6,10 +7,11 @@ public static class Workflow
     public static bool CanTransition(ApplicationState from, ApplicationState to) => (from, to) switch
     {
         (ApplicationState.Discovered, ApplicationState.Evaluating) => true,
-        (ApplicationState.Evaluating, ApplicationState.Rejected or ApplicationState.Drafting or ApplicationState.Blocked) => true,
-        (ApplicationState.Drafting, ApplicationState.ReadyForReview or ApplicationState.Blocked) => true,
+        (ApplicationState.Evaluating, ApplicationState.Rejected or ApplicationState.Drafting or ApplicationState.Blocked or ApplicationState.Closed or ApplicationState.Skipped) => true,
+        (ApplicationState.Drafting, ApplicationState.ReadyForReview or ApplicationState.Blocked or ApplicationState.Closed or ApplicationState.Skipped) => true,
+        (ApplicationState.Skipped, ApplicationState.Evaluating) => true,
         (ApplicationState.ReadyForReview, ApplicationState.Drafting or ApplicationState.ReadyToSubmit or ApplicationState.Rejected) => true,
-        (ApplicationState.ReadyToSubmit, ApplicationState.Submitting or ApplicationState.Blocked) => true,
+        (ApplicationState.ReadyToSubmit, ApplicationState.ReadyForReview or ApplicationState.Submitting or ApplicationState.Blocked) => true,
         (ApplicationState.Submitting, ApplicationState.Submitted or ApplicationState.SubmissionUnknown or ApplicationState.Blocked) => true,
         (ApplicationState.SubmissionUnknown, ApplicationState.Submitted or ApplicationState.Closed) => true,
         (ApplicationState.Submitted, ApplicationState.EmployerResponded or ApplicationState.Closed) => true,
@@ -25,10 +27,16 @@ public static class Workflow
         application.Revision++;
     }
 }
-public record ModelRequest(string Prompt, string Schema, string Model, string Reasoning, int TimeoutSeconds);
+public record ModelRequest(string Prompt, string Schema, string Model, string Reasoning, int TimeoutSeconds)
+{
+    public byte[]? ImagePng { get; init; }
+}
 public record ModelResponse(string Json);
 public interface IModelProvider { Task<ModelResponse> GenerateAsync(ModelRequest request, CancellationToken cancellationToken); }
-public record AgentExecutionRequest(Guid AgentProfileId, string Input);
+public record AgentExecutionRequest(Guid AgentProfileId, string Input, string Instructions = "", string? OutputSchema = null)
+{
+    public byte[]? ImagePng { get; init; }
+}
 public record AgentExecutionResult(Guid ExecutionId, string Status, string Output);
 public interface IAgentExecutor { Task<AgentExecutionResult> ExecuteAsync(AgentExecutionRequest request, CancellationToken cancellationToken); }
 public record BrowserResult(bool Confirmed, string Evidence);
@@ -38,7 +46,14 @@ public interface IJobApplicationProvider { Task<BrowserResult> SubmitAsync(JobAp
 public interface IEmployerFeedbackProvider { Task<IReadOnlyList<EmployerInteraction>> PollAsync(CancellationToken cancellationToken); }
 public interface IExternalJournalProvider { Task<string> ExportAsync(IReadOnlyList<Vacancy> vacancies, CancellationToken cancellationToken); }
 
-public record EvaluationResult(string Decision, string Rationale, string[] Matches, string[] MissingSkills, string[] UnverifiedRequirements, string[] Clarifications, string Confidence);
+public record EvaluationResult(string Decision, string Rationale, string[] Matches, string[] MissingSkills, string[] UnverifiedRequirements, string[] Clarifications, string Confidence)
+{
+    // Null means the saved assessment predates candidate-only questions.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string[]? CandidateQuestions { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public EvaluationValidation? Validation { get; init; }
+}
 public static class ConservativeEvaluator
 {
     public static EvaluationResult Evaluate(CandidateProfile profile, Vacancy vacancy)

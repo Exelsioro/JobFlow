@@ -6,6 +6,67 @@ using Microsoft.EntityFrameworkCore;
 namespace JobFlow.IntegrationTests;
 public class WorkflowTests
 {
+    [Fact]
+    public async Task ArchivedVacancyIsNotPreparedAfterRediscovery()
+    {
+        await using var fixture = await Setup.Create();
+        var vacancy = await fixture.Db.Vacancies.SingleAsync();
+        vacancy.IsArchived = true;
+        await fixture.Db.SaveChangesAsync();
+        var run = await new JobSearchWorkflow(fixture.Db, new FakeAgent()).RunAsync(fixture.Definition.Id, default);
+        Assert.Equal("Succeeded", run.Status);
+        Assert.Equal(0, run.Prepared);
+        Assert.Empty(await fixture.Db.Applications.ToListAsync());
+        Assert.Empty(await fixture.Db.Set<VacancyEvaluation>().ToListAsync());
+        Assert.True((await fixture.Db.Vacancies.SingleAsync()).IsArchived);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EvaluationEvidenceIsDurableAndUnsupportedMatchesCanBeCorrected(bool unsupported)
+    {
+        await using var fixture = await Setup.Create();
+        var db = fixture.Db;
+        var profile = await db.Profiles.SingleAsync();
+        profile.Skills = "C#; MS SQL Server";
+        profile.Dossier = "No Kubernetes experience.";
+        var provider = new ModelProvider { Enabled = true };
+        var evaluator = new AgentProfile { CandidateProfileId = profile.Id, ModelProviderId = provider.Id, TaskType = "Evaluation", Enabled = true };
+        db.AddRange(provider, evaluator);
+        fixture.Definition.EvaluationAgentId = evaluator.Id;
+        await db.SaveChangesAsync();
+        var agent = new FakeAgent(evaluation: evaluator.Id, matches: unsupported ? ["CSharp", "Kubernetes"] : ["CSharp", "SQL Server"]);
+        var workflow = new JobSearchWorkflow(db, agent);
+        if (unsupported)
+        {
+            var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => workflow.RunAsync(fixture.Definition.Id, default));
+            Assert.Contains("Kubernetes", failure.Message);
+        }
+        else await workflow.RunAsync(fixture.Definition.Id, default);
+        db.ChangeTracker.Clear();
+        var stored = JsonSerializer.Deserialize<EvaluationResult>((await db.Set<VacancyEvaluation>().SingleAsync()).ResultJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        Assert.NotNull(stored.Validation);
+        Assert.Equal(!unsupported, stored.Validation.IsValid);
+        Assert.Equal(agent.ExecutionId, stored.Validation.AgentExecutionId);
+        Assert.Equal("NeedsReview", stored.Validation.AgentDecision);
+        Assert.Equal(unsupported ? new[] { "C#" } : new[] { "C#", "MS SQL Server" }, stored.Matches);
+        Assert.Equal(unsupported ? ApplicationState.Blocked : ApplicationState.ReadyForReview, (await db.Applications.SingleAsync()).State);
+        Assert.Empty(await db.Set<ApplicationAttempt>().ToListAsync());
+        Assert.Contains("candidateSkills", agent.LastRequest!.Input);
+        Assert.Contains("matches must contain only skill names", agent.LastRequest.Instructions);
+        var audit = await db.Audit.SingleAsync(x => x.Action == "EvaluationValidated");
+        Assert.Contains(agent.ExecutionId.ToString(), audit.Details);
+        if (!unsupported) return;
+        Assert.Equal(new[] { "CSharp", "Kubernetes" }, stored.Validation.AgentMatches);
+        Assert.Contains("Dossier", stored.Validation.Skills.Single(x => x.Status == "Unsupported").MentionedIn);
+        Assert.Contains("Kubernetes", stored.Rationale);
+        var retry = await new JobSearchWorkflow(db, new FakeAgent(evaluation: evaluator.Id, matches: ["CSharp"])).RunAsync(fixture.Definition.Id, default);
+        Assert.Equal("Succeeded", retry.Status);
+        Assert.Equal(2, await db.Set<VacancyEvaluation>().CountAsync());
+        Assert.Equal(ApplicationState.ReadyForReview, (await db.Applications.SingleAsync()).State);
+    }
+
     [Fact] public async Task DiscoveryEvaluationDraftReviewIsDurableAndIdempotent()
     {
         await using var fixture = await Setup.Create();
@@ -71,7 +132,7 @@ public class WorkflowTests
         Assert.Equal(ApplicationState.Blocked, (await db.Applications.SingleAsync()).State);
         var agent = new FakeAgent(false, evaluator.Id);
         var run = await new JobSearchWorkflow(db, agent).RunAsync(fixture.Definition.Id, default);
-        Assert.Equal("Succeeded", run.Status); Assert.Equal(2, agent.Calls);
+        Assert.Equal("Succeeded", run.Status); Assert.Equal(3, agent.Calls);
         Assert.Equal(ApplicationState.ReadyForReview, (await db.Applications.SingleAsync()).State);
     }
     [Fact] public void RulesDoNotInventMissingEvidenceOrCompareDifferentCurrencies()
@@ -114,17 +175,28 @@ public class WorkflowTests
             Started.SetResult();await Task.Delay(Timeout.Infinite,ct);throw new InvalidOperationException();
         }
     }
-    private class FakeAgent(bool fail = false, Guid? evaluation = null) : IAgentExecutor
+    private class FakeAgent(bool fail = false, Guid? evaluation = null, string[]? matches = null) : IAgentExecutor
     {
         public int Calls;
+        public Guid ExecutionId { get; } = Guid.NewGuid();
+        public AgentExecutionRequest? LastRequest { get; private set; }
         public Task<AgentExecutionResult> ExecuteAsync(AgentExecutionRequest request, CancellationToken ct)
         {
             Calls++;
+            LastRequest = request;
             if (fail) throw new InvalidOperationException("Synthetic failure.");
+            if (request.OutputSchema == AgentTemplates.LetterVerificationSchema)
+                return Task.FromResult(new AgentExecutionResult(ExecutionId, "Succeeded", "{\"supported\":true,\"issues\":[],\"unsupportedClaims\":[]}"));
             var output = request.AgentProfileId == evaluation ?
-                """{"decision":"NeedsReview","rationale":"Review conditions","matches":["C#"],"missingSkills":[],"unverifiedRequirements":[],"clarifications":[],"confidence":"Medium"}""" :
-                """{"letter":"I have C# skills.","usedFacts":["C#"]}""";
-            return Task.FromResult(new AgentExecutionResult(Guid.NewGuid(), "Succeeded", output));
+                JsonSerializer.Serialize(new { decision = "NeedsReview", rationale = "Review conditions", matches = matches ?? ["C#"], missingSkills = Array.Empty<string>(), unverifiedRequirements = Array.Empty<string>(), clarifications = Array.Empty<string>(), confidence = "Medium" }) :
+                Letter(request.Input);
+            return Task.FromResult(new AgentExecutionResult(ExecutionId, "Succeeded", output));
+        }
+        private static string Letter(string input)
+        {
+            using var doc = JsonDocument.Parse(input);
+            var fact = doc.RootElement.GetProperty("factCatalog").EnumerateArray().Single(x => x.GetProperty("sourceField").GetString() == "Skills");
+            return JsonSerializer.Serialize(new { letter = "I have C# skills.", citations = new[] { new { factId = fact.GetProperty("id").GetString(), quote = "C#" } } });
         }
     }
     private sealed class Setup : IAsyncDisposable

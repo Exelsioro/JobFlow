@@ -52,6 +52,14 @@ public sealed class RemoteIntegrationService(JobFlowDb db, SecretStore secrets, 
                 using var response=await GetAsync(endpoint,headers,ct);
                 messages=JsonSerializer.Deserialize<List<IncomingFeedback>>(response.RootElement,Json)??throw new InvalidOperationException("Feedback must be a JSON array.");
             }
+            else if (integration.Kind == "hh-chats")
+            {
+                var platform = await db.Platforms.AsNoTracking().SingleAsync(x => x.Id == integration.JobPlatformId, ct);
+                if (!headers.Keys.Any(x => x.Equals("Authorization", StringComparison.OrdinalIgnoreCase)))
+                    throw new InvalidOperationException("Для чатов нужен токен соискателя HeadHunter.");
+                messages = await HeadHunterInbox.ReadAsync(new Uri(platform.Url).IdnHost,
+                    (uri, token) => GetAsync(uri, headers, token), ct);
+            }
             else if(integration.Kind=="gmail")
             {
                 string? token=null;
@@ -96,7 +104,7 @@ public sealed class RemoteIntegrationService(JobFlowDb db, SecretStore secrets, 
                 await db.SaveChangesAsync(ct);
                 await tx.CommitAsync(ct);
             }
-            if (integration.Kind == "gmail")
+            if (integration.Kind is "gmail" or "hh-chats" || integration.Kind == "feedback-json" && integration.MailAgentId.HasValue)
                 await new FeedbackProcessing(db, agents ?? new AgentExecutor(db, new CodexCliProvider())).ProcessAsync(integration, ct);
             integration.LastStatus = "Succeeded";
             integration.LastCheckedAt = DateTime.UtcNow;
@@ -121,6 +129,9 @@ public sealed class RemoteIntegrationService(JobFlowDb db, SecretStore secrets, 
         if (kind == "hh-status" && (endpoint.Host != "api.hh.ru" || !endpoint.IsDefaultPort || endpoint.Query.Length != 0 ||
             endpoint.AbsolutePath != "/negotiations"))
             throw new ArgumentException("Use https://api.hh.ru/negotiations for HeadHunter applicant status.");
+        if (kind == "hh-chats" && (endpoint.Host != "api.hh.ru" || !endpoint.IsDefaultPort ||
+            endpoint.AbsolutePath != "/common/chats" || endpoint.Query.Length != 0))
+            throw new ArgumentException("Используйте https://api.hh.ru/common/chats для чтения чатов.");
         if(!string.IsNullOrEmpty(endpoint.UserInfo)||!string.IsNullOrEmpty(endpoint.Fragment))throw new ArgumentException("Credentials and fragments do not belong in the URL.");
     }
     private async Task<PlatformStatusCheck.Observation[]> ReadHeadHunterAsync(Uri endpoint,

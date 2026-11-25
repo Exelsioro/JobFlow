@@ -43,6 +43,9 @@ public class RecoveryTests
             var execution = await db.Set<AgentExecution>().SingleAsync();
             Assert.Equal("Failed", execution.Status); Assert.Equal(3, execution.ConfigurationVersion);
             Assert.DoesNotContain("Synthetic input", execution.ConfigurationJson); Assert.Empty(execution.Output);
+            var completion = await db.Audit.SingleAsync(x => x.Action == "AgentExecutionCompleted");
+            Assert.Contains("Failed", completion.Details);
+            Assert.DoesNotContain("Synthetic input", completion.Details);
         }
         finally { File.Delete(file); }
     }

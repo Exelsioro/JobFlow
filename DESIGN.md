@@ -4,14 +4,14 @@ description: Local job-search workspace with profile-scoped records and explicit
 colors:
   primary: "#225e47"
   primary-hover: "#164932"
-  canvas: "#f5f6f2"
+  canvas: "#f5f5f0"
   surface: "#ffffff"
   ink: "#172923"
   muted: "#52645b"
-  line: "#d6dfd8"
-  navigation: "#edf1ea"
-  navigation-active: "#d5e3d4"
-  overview: "#e3ecdf"
+  line: "#d3dcd4"
+  navigation: "#173c32"
+  navigation-active: "#d6edbe"
+  overview: "#ffffff"
   danger: "#9d2929"
   error-bg: "#fbe8e5"
   error-text: "#812525"
@@ -90,7 +90,7 @@ Operate mode: readable records, inline editing and explicit feedback. The interf
 
 ## Colors
 
-Primary green identifies actions and selected navigation. Pale neutral surfaces separate the sidebar, main canvas and editable content. Ink and muted text carry hierarchy without depending on color alone.
+Primary green identifies actions and selected navigation. A dark forest-green sidebar separates navigation from the light canvas and white work surfaces. Ink and muted text carry hierarchy without depending on color alone.
 
 **The Status Truth Rule.** Success styling confirms the operation actually completed; queued work must remain described as queued. Unsupported features are labelled explicitly.
 
@@ -98,17 +98,17 @@ Primary green identifies actions and selected navigation. Pale neutral surfaces 
 
 The implemented interface uses Segoe UI with a sans-serif fallback. Page headings, section headings, body copy, labels and supporting text follow the frontmatter roles. Paragraphs are limited to 72ch; tables use compact text. Numeric summaries use tabular numerals.
 
-Page headings reduce to 27px at the mobile breakpoint. The overview heading is 26px on desktop and 23px on mobile. System typography is recorded as implementation evidence, not a distinctive display-brand prescription.
+Page headings reduce to 27px at the mobile breakpoint. The decision queue and recent-run headings use the 21px section role. System typography is recorded as implementation evidence, not a distinctive display-brand prescription.
 
 ## Layout
 
 Desktop uses a 240px sidebar beside a flexible main column. The page has a maximum width of 1500px with 38px vertical and 40px horizontal padding. At 1100px, the sidebar becomes 210px and page padding becomes 28px by 24px.
 
-At 760px and below, navigation becomes a horizontally scrolling strip, the sidebar returns to normal flow, page padding becomes 28px by 16px, and two-column forms become one column. Record tables scroll within their own container.
+At 760px and below, the sidebar returns to normal flow and a Menu button opens the grouped navigation. Choosing a page closes the mobile menu. Page padding becomes 28px by 16px, and two-column forms become one column. The application list stacks into labelled rows; wide diagnostic tables scroll within their own container.
 
 ## Elevation & Depth
 
-No shadows are used. Tone, spacing and single borders distinguish surfaces. Editing panels remain flat and use a light outline; the overview uses a tinted background.
+No shadows are used. Tone, spacing and single borders distinguish surfaces. Editing panels remain flat and use a light outline; the overview pairs a decision queue with a compact run journal on white surfaces, stacking them at 1100px.
 
 ## Shapes
 
@@ -118,7 +118,7 @@ Controls use modest corners, tables and empty states use a slightly larger radiu
 
 ### Buttons
 
-Primary buttons use green with white text; secondary buttons use a white surface and outline; row actions use transparent backgrounds. Standard actions have a 44px minimum height. Navigation items currently use 40px. Disabled buttons reduce opacity and use a non-interactive cursor. Hover changes the background; reduced-motion users receive no authored transition.
+Primary buttons use green with white text; secondary buttons use a white surface and outline; row actions use transparent backgrounds. Standard actions have a 44px minimum height. Navigation items use the same 44px minimum. Disabled buttons reduce opacity and use a non-interactive cursor. Hover changes the background; reduced-motion users receive no authored transition.
 
 ### Inputs
 
@@ -126,7 +126,7 @@ Native inputs, selects and textareas use white surfaces, a muted green-gray bord
 
 ### Navigation
 
-Desktop navigation stacks compact text labels; the selected item receives a green tint and heavier type. The same labels remain horizontally scrollable on mobile. The working-profile selector sits above the content.
+Desktop navigation keeps Overview, Vacancies, Applications and Notifications visible, followed by five collapsible groups: Profile and resumes, Vacancy search, Applications and replies, Services and connections, and History and logs. Group headings use chevrons and explicit expanded states; child items are indented. The selected page receives a green tint and heavier type. Its group opens when navigating directly to a page, and expanded groups are remembered in the browser. Mobile uses a Menu button above the same hierarchy. The working-profile selector sits above the content.
 
 ### Tables and forms
 

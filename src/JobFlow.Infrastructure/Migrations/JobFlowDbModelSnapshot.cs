@@ -44,11 +44,27 @@ namespace JobFlow.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Output")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Reasoning")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ResponseLanguage")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TaskInstructions")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -97,6 +113,12 @@ namespace JobFlow.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ResponseLanguage")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("ru");
+
                     b.Property<string>("SystemPrompt")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -108,6 +130,9 @@ namespace JobFlow.Infrastructure.Migrations
                     b.Property<string>("ToolBindingsJson")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("UseTaskModelPresets")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("UserPromptTemplate")
                         .IsRequired()
@@ -216,6 +241,10 @@ namespace JobFlow.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Dossier")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Education")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -272,6 +301,46 @@ namespace JobFlow.Infrastructure.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Profiles");
+                });
+
+            modelBuilder.Entity("JobFlow.Domain.DossierProposal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("AgentExecutionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CandidateProfileId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ConfirmedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FactsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProfileJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ResumeVersionId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AgentExecutionId");
+
+                    b.HasIndex("CandidateProfileId");
+
+                    b.HasIndex("ResumeVersionId");
+
+                    b.ToTable("DossierProposal");
                 });
 
             modelBuilder.Entity("JobFlow.Domain.EmployerInteraction", b =>
@@ -420,6 +489,10 @@ namespace JobFlow.Infrastructure.Migrations
                     b.Property<bool>("ImportConfirmed")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Instructions")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("JobPlatformId")
                         .HasColumnType("TEXT");
 
@@ -519,6 +592,12 @@ namespace JobFlow.Infrastructure.Migrations
                     b.Property<string>("Adapter")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<string>("BrowserMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("inherit");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
@@ -626,6 +705,47 @@ namespace JobFlow.Infrastructure.Migrations
                     b.ToTable("Providers");
                 });
 
+            modelBuilder.Entity("JobFlow.Domain.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("CandidateProfileId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("RelatedId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CandidateProfileId");
+
+                    b.ToTable("Notification");
+                });
+
             modelBuilder.Entity("JobFlow.Domain.PlatformAccount", b =>
                 {
                     b.Property<Guid>("Id")
@@ -691,7 +811,26 @@ namespace JobFlow.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("AdaptationJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("AgentExecutionId")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DossierHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExtractedText")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<string>("OriginalName")
@@ -705,14 +844,26 @@ namespace JobFlow.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid?>("SourceResumeVersionId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("StorageKey")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("VacancyId")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("Version")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AgentExecutionId");
+
+                    b.HasIndex("SourceResumeVersionId");
+
+                    b.HasIndex("VacancyId");
 
                     b.HasIndex("ResumeId", "Version")
                         .IsUnique();
@@ -722,6 +873,7 @@ namespace JobFlow.Infrastructure.Migrations
 
             modelBuilder.Entity("JobFlow.Domain.ScheduledTask", b =>
                 {
+                    b.Property<bool>("PrepareOutsideAgeLimit").HasColumnType("INTEGER");
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
@@ -733,6 +885,10 @@ namespace JobFlow.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DaysOfWeek")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("Enabled")
@@ -757,6 +913,10 @@ namespace JobFlow.Infrastructure.Migrations
                     b.Property<DateTime?>("LeaseUntil")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("LocalTime")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("MaxRetries")
                         .HasColumnType("INTEGER");
 
@@ -770,6 +930,10 @@ namespace JobFlow.Infrastructure.Migrations
                     b.Property<bool>("RunRequested")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ScheduleKind")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("TimeZone")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -777,19 +941,61 @@ namespace JobFlow.Infrastructure.Migrations
                     b.Property<int>("TimeoutSeconds")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid?>("VacancyId")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("WorkflowDefinitionId")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CandidateProfileId");
-
                     b.HasIndex("IntegrationId");
 
+                    b.HasIndex("VacancyId");
+
                     b.HasIndex("WorkflowDefinitionId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"Kind\" = 'Workflow'");
+
+                    b.HasIndex("CandidateProfileId", "VacancyId")
+                        .IsUnique()
+                        .HasFilter("\"Kind\" = 'PrepareApplication'");
 
                     b.ToTable("Tasks");
+                });
+
+            modelBuilder.Entity("JobFlow.Domain.ServiceState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("HeartbeatAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ProcessId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Role")
+                        .IsUnique();
+
+                    b.ToTable("ServiceState");
                 });
 
             modelBuilder.Entity("JobFlow.Domain.TaskRun", b =>
@@ -894,6 +1100,10 @@ namespace JobFlow.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Availability")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
@@ -913,6 +1123,9 @@ namespace JobFlow.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("INTEGER");
+
                     b.Property<Guid>("JobPlatformId")
                         .HasColumnType("TEXT");
 
@@ -921,6 +1134,10 @@ namespace JobFlow.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Location")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PublicationEvidence")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -940,6 +1157,9 @@ namespace JobFlow.Infrastructure.Migrations
 
                     b.Property<string>("Url")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("VerifiedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("WorkMode")
@@ -988,8 +1208,29 @@ namespace JobFlow.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ApplicationStatusFilter")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("pending");
+
+                    b.Property<bool>("AutoSubmit")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("SubmitExternalApplications")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("BrowserAgentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("BrowserProfileId")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("CandidateProfileId")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("CheckMail")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
@@ -998,6 +1239,23 @@ namespace JobFlow.Infrastructure.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<Guid?>("EvaluationAgentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EvaluationResultFilter")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("all");
+
+                    b.Property<string>("ExecutionMode")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("FreshnessDays")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Instructions")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("JobPlatformId")
@@ -1018,7 +1276,30 @@ namespace JobFlow.Infrastructure.Migrations
                     b.Property<Guid?>("LetterAgentId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("MaxApplicationsPerRun")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MaxBrowserSteps")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MaxVacanciesPerPlatform")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(50);
+
+                    b.Property<int>("MaxVacancyChecksPerRun")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(10);
+
                     b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ResumeAgentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ResumeMode")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -1033,7 +1314,17 @@ namespace JobFlow.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("VacancySource")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("search");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("BrowserAgentId");
+
+                    b.HasIndex("BrowserProfileId");
 
                     b.HasIndex("CandidateProfileId");
 
@@ -1042,6 +1333,8 @@ namespace JobFlow.Infrastructure.Migrations
                     b.HasIndex("JobPlatformId");
 
                     b.HasIndex("LetterAgentId");
+
+                    b.HasIndex("ResumeAgentId");
 
                     b.HasIndex("ResumeVersionId");
 
@@ -1054,23 +1347,45 @@ namespace JobFlow.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("AttentionDetails")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("CandidateProfileId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Checked")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("Discovered")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Error")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Errors")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime?>("FinishedAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("NeedsAttention")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("PreparationOnly")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int>("Prepared")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("Rejected")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Skipped")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Stage")
@@ -1079,6 +1394,12 @@ namespace JobFlow.Infrastructure.Migrations
 
                     b.Property<string>("Status")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Submitted")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("TargetVacancyId")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("WorkflowDefinitionId")
@@ -1129,6 +1450,27 @@ namespace JobFlow.Infrastructure.Migrations
                     b.HasOne("JobFlow.Domain.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("JobFlow.Domain.DossierProposal", b =>
+                {
+                    b.HasOne("JobFlow.Domain.AgentExecution", null)
+                        .WithMany()
+                        .HasForeignKey("AgentExecutionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("JobFlow.Domain.CandidateProfile", null)
+                        .WithMany()
+                        .HasForeignKey("CandidateProfileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("JobFlow.Domain.ResumeVersion", null)
+                        .WithMany()
+                        .HasForeignKey("ResumeVersionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
@@ -1227,6 +1569,14 @@ namespace JobFlow.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("JobFlow.Domain.Notification", b =>
+                {
+                    b.HasOne("JobFlow.Domain.CandidateProfile", null)
+                        .WithMany()
+                        .HasForeignKey("CandidateProfileId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("JobFlow.Domain.PlatformAccount", b =>
                 {
                     b.HasOne("JobFlow.Domain.BrowserProfile", null)
@@ -1258,11 +1608,26 @@ namespace JobFlow.Infrastructure.Migrations
 
             modelBuilder.Entity("JobFlow.Domain.ResumeVersion", b =>
                 {
+                    b.HasOne("JobFlow.Domain.AgentExecution", null)
+                        .WithMany()
+                        .HasForeignKey("AgentExecutionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("JobFlow.Domain.Resume", null)
                         .WithMany()
                         .HasForeignKey("ResumeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("JobFlow.Domain.ResumeVersion", null)
+                        .WithMany()
+                        .HasForeignKey("SourceResumeVersionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("JobFlow.Domain.Vacancy", null)
+                        .WithMany()
+                        .HasForeignKey("VacancyId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("JobFlow.Domain.ScheduledTask", b =>
@@ -1276,6 +1641,11 @@ namespace JobFlow.Infrastructure.Migrations
                     b.HasOne("JobFlow.Domain.Integration", null)
                         .WithMany()
                         .HasForeignKey("IntegrationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("JobFlow.Domain.Vacancy", null)
+                        .WithMany()
+                        .HasForeignKey("VacancyId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("JobFlow.Domain.WorkflowDefinition", null)
@@ -1319,6 +1689,16 @@ namespace JobFlow.Infrastructure.Migrations
 
             modelBuilder.Entity("JobFlow.Domain.WorkflowDefinition", b =>
                 {
+                    b.HasOne("JobFlow.Domain.AgentProfile", null)
+                        .WithMany()
+                        .HasForeignKey("BrowserAgentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("JobFlow.Domain.BrowserProfile", null)
+                        .WithMany()
+                        .HasForeignKey("BrowserProfileId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("JobFlow.Domain.CandidateProfile", null)
                         .WithMany()
                         .HasForeignKey("CandidateProfileId")
@@ -1339,6 +1719,11 @@ namespace JobFlow.Infrastructure.Migrations
                     b.HasOne("JobFlow.Domain.AgentProfile", null)
                         .WithMany()
                         .HasForeignKey("LetterAgentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("JobFlow.Domain.AgentProfile", null)
+                        .WithMany()
+                        .HasForeignKey("ResumeAgentId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("JobFlow.Domain.ResumeVersion", null)
